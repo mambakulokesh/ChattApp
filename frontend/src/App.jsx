@@ -1,15 +1,20 @@
+import "./App.css";
+import ChatPage from "./pages/ChatPage";
+import Login from "./pages/Login";
 
-import './App.css'
+import { Routes, Route } from "react-router-dom";
 
 function App() {
+  // const user = true;
 
   return (
     <>
-      <h1 className="text-3xl font-bold underline">
-      Hello world!
-    </h1>
+      <Routes>
+        <Route path="/" element={<ChatPage />} />
+        <Route path="/login" element={<Login />} />
+      </Routes>
     </>
-  )
+  );
 }
 
-export default App
+export default App;
