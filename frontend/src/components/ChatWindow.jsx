@@ -1,7 +1,8 @@
-import React, { useState, useRef, useEffect } from "react";
-import { FaMicrophone, FaSmile, FaMapPin, FaCamera } from "react-icons/fa";
+import React, { useState, useRef, useEffect, useContext } from "react";
+import { FaMicrophone, FaSmile, FaMapPin, FaCamera, FaHeart, FaUserTimes, FaExclamationTriangle, FaTrashAlt } from "react-icons/fa";
 import { FaPhone, FaVideo } from "react-icons/fa";
 import { HiDotsVertical } from "react-icons/hi";
+import { AuthContext } from "../utils/AuthProvider";
 import {
   MdInsertDriveFile,
   MdPhoto,
@@ -14,14 +15,18 @@ import { motion, AnimatePresence } from "framer-motion";
 import mammoth from "mammoth";
 import io from "socket.io-client";
 
-// Socket.IO connection
 const socket = io("http://38.77.155.139:8000/", {
   reconnection: true,
   reconnectionAttempts: 5,
-  transports: ["websocket"],
 });
 
 const ChatWindow = () => {
+  const { userDetails } = useContext(AuthContext);
+
+  
+  const isUserDetailsEmpty = !userDetails || Object.keys(userDetails).length === 0;
+
+  // State and logic remain the same as in your original code
   const [isPinDropdownOpen, setIsPinDropdownOpen] = useState(false);
   const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
   const [message, setMessage] = useState("");
@@ -39,7 +44,9 @@ const ChatWindow = () => {
   const [previewFile, setPreviewFile] = useState(null);
   const [fileContents, setFileContents] = useState({});
   const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
   const [mediaRecorder, setMediaRecorder] = useState(null);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const audioChunksRef = useRef([]);
   const messagesEndRef = useRef(null);
 
@@ -49,7 +56,6 @@ const ChatWindow = () => {
   const audioInputRef = useRef(null);
   const contactInputRef = useRef(null);
 
-  // Socket.IO setup
   useEffect(() => {
     socket.on("connect", () => {
       console.log("Connected to Socket.IO server");
@@ -67,7 +73,6 @@ const ChatWindow = () => {
       console.log("Disconnected:", reason);
     });
 
-    // Cleanup on unmount
     return () => {
       socket.off("connect");
       socket.off("receiveMessage");
@@ -75,7 +80,6 @@ const ChatWindow = () => {
       socket.off("disconnect");
     };
   }, []);
-
 
   useEffect(() => {
     const readFiles = async () => {
@@ -107,6 +111,16 @@ const ChatWindow = () => {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [chatMessages]);
+
+  useEffect(() => {
+    let interval;
+    if (isRecording) {
+      interval = setInterval(() => {
+        setRecordingTime((prevTime) => prevTime + 1);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [isRecording]);
 
   const toggleMenu = () => setShowMenu(!showMenu);
   const togglePinDropdown = () => {
@@ -180,6 +194,7 @@ const ChatWindow = () => {
 
       recorder.start();
       setIsRecording(true);
+      setRecordingTime(0);
     } catch (error) {
       console.error("Error starting recording:", error);
       alert("Failed to access microphone. Please check permissions.");
@@ -202,7 +217,6 @@ const ChatWindow = () => {
     }
   };
 
-  // Modified handleSend to emit message via Socket.IO
   const handleSend = () => {
     if (!isUserBlocked && (message.trim() || selectedFiles.length > 0)) {
       const newMessage = {
@@ -212,18 +226,14 @@ const ChatWindow = () => {
             ? selectedFiles.map((file) => ({
                 name: file.name,
                 type: file.type,
-                // Convert file to base64 or URL if needed for transmission
                 url: URL.createObjectURL(file),
               }))
             : [],
         sender: "self",
-        time: new Date().toLocaleString().slice(9, 17),
+        time: new Date().toLocaleString().slice(10, 16),
       };
 
-      // Emit the message to the server
       socket.emit("sendMessage", newMessage);
-
-      // Add to local chat immediately for optimistic UI update
       setChatMessages((prevMessages) => [...prevMessages, newMessage]);
       setMessage("");
       setSelectedFiles([]);
@@ -232,7 +242,7 @@ const ChatWindow = () => {
 
   const renderFilePreview = (file, isPreviewModal = false) => {
     const fileType = file.type.split("/")[0];
-    const fileUrl = file.url || URL.createObjectURL(file); // Handle file.url from socket or local file
+    const fileUrl = file.url || URL.createObjectURL(file);
 
     switch (fileType) {
       case "image":
@@ -242,8 +252,8 @@ const ChatWindow = () => {
             alt={file.name}
             className={
               isPreviewModal
-                ? "max-w-full max-h-[90vh]"
-                : "max-w-[500px] max-h-[200px] rounded-lg"
+                ? "max-w-full max-h-[80vh] object-contain"
+                : "max-w-[300px] max-h-[150px] rounded-lg object-cover"
             }
           />
         );
@@ -254,8 +264,8 @@ const ChatWindow = () => {
             controls
             className={
               isPreviewModal
-                ? "max-w-[90vw] max-h-[90vh] w-[80vw] h-[80vh]"
-                : "max-w-[500px] max-h-[200px] rounded-lg"
+                ? "max-w-[80vw] max-h-[80vh] w-auto h-auto"
+                : "max-w-[300px] max-h-[150px] rounded-lg"
             }
           />
         );
@@ -264,7 +274,7 @@ const ChatWindow = () => {
           <audio
             src={fileUrl}
             controls
-            className={isPreviewModal ? "w-[300px]" : "max-w-[400px]"}
+            className={isPreviewModal ? "w-[250px]" : "max-w-[250px]"}
           />
         );
       case "application":
@@ -273,8 +283,7 @@ const ChatWindow = () => {
             <iframe
               src={fileUrl}
               title={file.name}
-              className="w-[82vw] h-[85vh]"
-              onLoad={() => !isPreviewModal && URL.revokeObjectURL(fileUrl)}
+              className="w-[70vw] h-[70vh]"
             />
           ) : (
             <div className="flex items-center gap-2">
@@ -288,7 +297,7 @@ const ChatWindow = () => {
         ) {
           return isPreviewModal ? (
             <div
-              className="text-white w-[82vw] h-[85vh] overflow-y-scroll"
+              className="text-white w-[70vw] h-[70vh] overflow-y-auto p-4"
               dangerouslySetInnerHTML={{
                 __html: fileContents[file.name] || "Loading...",
               }}
@@ -308,7 +317,7 @@ const ChatWindow = () => {
         );
       case "text":
         return isPreviewModal ? (
-          <div className="w-[82vw] h-[85vh] overflow-y-scroll">
+          <div className="w-[70vw] h-[70vh] overflow-y-auto p-4">
             <pre className="text-white whitespace-pre-wrap">
               {fileContents[file.name] || "Loading..."}
             </pre>
@@ -330,7 +339,6 @@ const ChatWindow = () => {
   };
 
   const handleFileClick = (file) => {
-    // Ensure the file object has all necessary properties
     const fileWithUrl = {
       ...file,
       url: file.url || URL.createObjectURL(file),
@@ -345,6 +353,14 @@ const ChatWindow = () => {
     setPreviewFile(null);
   };
 
+  const openProfileModal = () => {
+    setIsProfileModalOpen(true);
+  };
+
+  const closeProfileModal = () => {
+    setIsProfileModalOpen(false);
+  };
+
   const dropdownVariants = {
     hidden: { opacity: 0, y: -10 },
     visible: { opacity: 1, y: 0 },
@@ -356,35 +372,51 @@ const ChatWindow = () => {
     visible: { opacity: 1, y: 0 },
   };
 
+  
+  if (isUserDetailsEmpty) {
+    return (
+      <div className="flex flex-col h-full w-full bg-gray-900 justify-center items-center">
+        <h2 className="text-white text-lg font-semibold">Start Your Conversation</h2>
+        <p className="text-gray-400 mt-2">Select a user to begin chatting.</p>
+      </div>
+    );
+  }
+
+  
   return (
-    <div className="flex flex-col h-full max-h-screen bg-gray-900">
+    <div className="flex flex-col h-full w-full bg-gray-900">
       {/* Header */}
-      <div className="flex items-center p-3 sm:p-4 bg-gray-800 border-b border-gray-700">
-        <img
-          src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSPtJ1GSMcrDjNkB6Y_IZQwK4watXeN1fvgAQ&s"
-          alt="User Avatar"
-          className="w-8 h-8 sm:w-10 sm:h-10 rounded-full mr-2 sm:mr-3"
-        />
-        <div className="flex-1 min-w-0">
-          <h2 className="text-sm sm:text-lg font-semibold text-white truncate">
-            Sandra Clark
-          </h2>
-          <p className="text-xs sm:text-sm text-gray-400 truncate">
-            Every day is a new beginning...
-          </p>
+      <div className="flex items-center p-3 bg-gray-800 border-b border-gray-700 shrink-0">
+        <div
+          onClick={openProfileModal}
+          className="cursor-pointer flex items-center flex-1 min-w-0"
+        >
+          <img
+            src={userDetails?.avatar === null ? "https://i.pinimg.com/236x/00/80/ee/0080eeaeaa2f2fba77af3e1efeade565.jpg" : userDetails?.avatar}
+            alt="User Avatar"
+            className="w-8 h-8 rounded-full mr-2"
+          />
+          <div className="flex-1 min-w-0">
+            <h2 className="text-sm font-semibold text-white truncate">
+              {userDetails?.username || "User"}
+            </h2>
+            <p className="text-xs text-gray-400 truncate">
+              {userDetails?.is_active ? "online" : "offline"}
+            </p>
+          </div>
         </div>
-        <div className="ml-auto flex space-x-3 sm:space-x-6 relative">
-          <button className="text-gray-400 hover:text-white hidden sm:block">
-            <FaPhone className="w-5 h-5" />
+        <div className="flex space-x-3 relative">
+          <button className="text-gray-400 hover:text-white">
+            <FaPhone className="w-4 h-4" />
           </button>
-          <button className="text-gray-400 hover:text-white hidden sm:block">
-            <FaVideo className="w-5 h-5" />
+          <button className="text-gray-400 hover:text-white">
+            <FaVideo className="w-4 h-4" />
           </button>
           <button
             className="text-gray-400 hover:text-white"
             onClick={toggleMenu}
           >
-            <HiDotsVertical className="w-5 h-5" />
+            <HiDotsVertical className="w-4 h-4" />
           </button>
           <AnimatePresence>
             {showMenu && (
@@ -394,16 +426,16 @@ const ChatWindow = () => {
                 exit="exit"
                 variants={dropdownVariants}
                 transition={{ duration: 0.2 }}
-                className="absolute top-10 right-0 mt-2 w-40 bg-gray-700 text-white rounded shadow-lg z-20"
+                className="absolute top-8 right-0 mt-2 w-36 bg-gray-700 text-white rounded shadow-lg z-20"
               >
                 <button
-                  className="block px-4 py-2 text-sm hover:bg-gray-600 w-full text-left"
+                  className="block px-3 py-2 text-sm hover:bg-gray-600 w-full text-left"
                   onClick={handleBlockUser}
                 >
                   {isUserBlocked ? "Unblock User" : "Block User"}
                 </button>
                 <button
-                  className="block px-4 py-2 text-sm hover:bg-gray-600 w-full text-left"
+                  className="block px-3 py-2 text-sm hover:bg-gray-600 w-full text-left"
                   onClick={() => alert("Chat Cleared")}
                 >
                   Clear Chat
@@ -415,7 +447,7 @@ const ChatWindow = () => {
       </div>
 
       {/* Chat Messages Area */}
-      <div className="flex-1 p-2 sm:p-4 overflow-y-auto">
+      <div className="flex-1 p-3 overflow-y-auto">
         {chatMessages.map((msg, index) => (
           <motion.div
             key={index}
@@ -424,19 +456,19 @@ const ChatWindow = () => {
             animate="visible"
             className={`flex ${
               msg.sender === "self" ? "justify-end" : "items-start"
-            } mb-4`}
+            } mb-3`}
           >
             {msg.sender === "other" && (
               <img
                 src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSPtJ1GSMcrDjNkB6Y_IZQwK4watXeN1fvgAQ&s"
                 alt="User Avatar"
-                className="w-6 h-6 sm:w-8 sm:h-8 rounded-full mr-2 sm:mr-3"
+                className="w-6 h-6 rounded-full mr-2 flex-shrink-0"
               />
             )}
             <div className="max-w-[80%]">
               {msg.text && (
                 <div
-                  className={`p-2 sm:p-3 rounded-lg text-sm sm:text-base ${
+                  className={`p-2 rounded-lg text-sm ${
                     msg.sender === "self"
                       ? "bg-blue-600 text-white"
                       : "bg-gray-700 text-white"
@@ -476,93 +508,101 @@ const ChatWindow = () => {
       </div>
 
       {/* Input Area */}
-      <div className="relative p-2 sm:p-4 bg-gray-800 border-t border-gray-700 flex flex-wrap gap-2 items-center">
-        <div className="flex items-center gap-2 sm:gap-3">
-          <button
-            className="text-gray-400 hover:text-white"
-            onClick={togglePinDropdown}
-            disabled={isUserBlocked}
-          >
-            <FaMapPin className="w-5 h-5" />
-          </button>
-          <button
-            disabled={isUserBlocked}
-            className="text-gray-400 hover:text-white"
-          >
-            <FaCamera className="w-5 h-5" />
-          </button>
-          <button
-            onClick={handleMicClick}
-            disabled={isUserBlocked}
-            className={`text-gray-400 hover:text-white ${
-              isRecording ? "text-red-500" : ""
+      <div className="relative p-3 bg-gray-800 border-t border-gray-700 shrink-0">
+        <div className="flex flex-wrap gap-2 items-center">
+          <div className="flex items-center gap-2">
+            <button
+              className="text-gray-400 hover:text-white"
+              onClick={togglePinDropdown}
+              disabled={isUserBlocked}
+            >
+              <FaMapPin className="w-4 h-4" />
+            </button>
+            <button
+              disabled={isUserBlocked}
+              className="text-gray-400 hover:text-white"
+            >
+              <FaCamera className="w-4 h-4" />
+            </button>
+            <button
+              onClick={handleMicClick}
+              disabled={isUserBlocked}
+              className={`text-gray-400 hover:text-white ${
+                isRecording ? "text-red-500" : ""
+              }`}
+            >
+              <FaMicrophone className="w-4 h-4" />
+            </button>
+            {isRecording && (
+              <span className="text-white text-xs">
+                {Math.floor(recordingTime / 60)}:
+                {(recordingTime % 60).toString().padStart(2, "0")}
+              </span>
+            )}
+          </div>
+
+          <div
+            className={`flex-1 min-w-0 bg-gray-700 p-2 rounded-lg text-white text-sm flex flex-col gap-2 ${
+              isUserBlocked ? "cursor-not-allowed opacity-50" : ""
             }`}
           >
-            <FaMicrophone className="w-5 h-5" />
-          </button>
-        </div>
-
-        <div
-          className={`flex-1 min-w-[60%] bg-gray-700 p-2 rounded-lg outline-none text-white placeholder-gray-400 text-sm sm:text-base flex flex-col gap-2 ${
-            isUserBlocked ? "cursor-not-allowed opacity-50" : ""
-          }`}
-        >
-          {selectedFiles.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {selectedFiles.map((file, index) => (
-                <div
-                  key={index}
-                  className="flex items-center bg-gray-600 text-white px-2 py-1 rounded truncate max-w-[150px]"
-                >
-                  <span className="truncate">{file.name}</span>
-                  <button
-                    onClick={() => removeFile(index)}
-                    className="ml-2 text-red-400 hover:text-red-600"
-                    disabled={isUserBlocked}
+            {selectedFiles.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {selectedFiles.map((file, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center bg-gray-600 text-white px-2 py-1 rounded truncate max-w-[120px] text-xs"
                   >
-                    ×
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-          <input
-            type="text"
-            placeholder={
-              isUserBlocked
-                ? "User is blocked"
-                : selectedFiles.length > 0
-                ? "Add a message (optional)"
-                : "Type a message"
-            }
-            className="flex-1 bg-transparent outline-none text-white placeholder-gray-400"
-            value={message}
-            onChange={(e) => !isUserBlocked && setMessage(e.target.value)}
-            disabled={isUserBlocked}
-          />
-        </div>
+                    <span className="truncate">{file.name}</span>
+                    <button
+                      onClick={() => removeFile(index)}
+                      className="ml-2 text-red-400 hover:text-red-600"
+                      disabled={isUserBlocked}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <input
+              type="text"
+              placeholder={
+                isUserBlocked
+                  ? "User is blocked"
+                  : selectedFiles.length > 0
+                  ? "Add a message (optional)"
+                  : "Type a message"
+              }
+              className="flex-1 bg-transparent outline-none text-white placeholder-gray-400 w-full text-sm"
+              value={message}
+              onChange={(e) => !isUserBlocked && setMessage(e.target.value)}
+              disabled={isUserBlocked}
+            />
+          </div>
 
-        <div className="flex items-center gap-2 sm:gap-3">
-          <button
-            className="text-gray-400 hover:text-white"
-            onClick={toggleEmojiPicker}
-            disabled={isUserBlocked}
-          >
-            <FaSmile className="w-5 h-5" />
-          </button>
-          <button
-            onClick={handleSend}
-            disabled={
-              isUserBlocked || (!message.trim() && selectedFiles.length === 0)
-            }
-            className={`px-3 py-2 sm:px-4 sm:py-2 rounded-lg text-sm text-white sm:text-base ${
-              isUserBlocked || (!message.trim() && selectedFiles.length === 0)
-                ? "bg-blue-600 opacity-50 cursor-not-allowed"
-                : "bg-blue-600 hover:bg-blue-700"
-            }`}
-          >
-            Send
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              className="text-gray-400 hover:text-white"
+              onClick={toggleEmojiPicker}
+              disabled={isUserBlocked}
+            >
+              <FaSmile className="w-4 h-4" />
+            </button>
+            <button
+              onClick={handleSend}
+              disabled={
+                isUserBlocked || (!message.trim() && selectedFiles.length === 0)
+              }
+              className={`px-3 py-2 rounded-lg text-sm text-white ${
+                isUserBlocked || (!message.trim() && selectedFiles.length === 0)
+                  ? "bg-blue-600 opacity-50 cursor-not-allowed"
+                  : "bg-blue-600 hover:bg-blue-700"
+              }`}
+            >
+              Send
+            </button>
+          </div>
         </div>
 
         {/* Hidden File Inputs */}
@@ -615,35 +655,35 @@ const ChatWindow = () => {
               exit="exit"
               variants={dropdownVariants}
               transition={{ duration: 0.2 }}
-              className="absolute text-white bottom-14 left-2 sm:left-4 w-48 bg-gray-700 rounded-lg shadow-lg z-10"
+              className="absolute bottom-16 left-2 w-40 bg-gray-700 rounded-lg shadow-lg z-20"
             >
               <ul className="py-2">
                 <li
-                  className="px-4 py-2 hover:bg-gray-600 cursor-pointer flex items-center"
+                  className="px-3 py-2 hover:bg-gray-600 cursor-pointer flex items-center text-sm"
                   onClick={() => openFileInput(documentInputRef)}
                 >
                   <MdInsertDriveFile className="mr-2 text-gray-400" /> Documents
                 </li>
                 <li
-                  className="px-4 py-2 hover:bg-gray-600 cursor-pointer flex items-center"
+                  className="px-3 py-2 hover:bg-gray-600 cursor-pointer flex items-center text-sm"
                   onClick={() => openFileInput(photoInputRef)}
                 >
                   <MdPhoto className="mr-2 text-gray-400" /> Photos
                 </li>
                 <li
-                  className="px-4 py-2 hover:bg-gray-600 cursor-pointer flex items-center"
+                  className="px-3 py-2 hover:bg-gray-600 cursor-pointer flex items-center text-sm"
                   onClick={() => openFileInput(videoInputRef)}
                 >
                   <MdVideoCall className="mr-2 text-gray-400" /> Video
                 </li>
                 <li
-                  className="px-4 py-2 hover:bg-gray-600 cursor-pointer flex items-center"
+                  className="px-3 py-2 hover:bg-gray-600 cursor-pointer flex items-center text-sm"
                   onClick={() => openFileInput(audioInputRef)}
                 >
                   <MdAudiotrack className="mr-2 text-gray-400" /> Audio
                 </li>
                 <li
-                  className="px-4 py-2 hover:bg-gray-600 cursor-pointer flex items-center"
+                  className="px-3 py-2 hover:bg-gray-600 cursor-pointer flex items-center text-sm"
                   onClick={() => openFileInput(contactInputRef)}
                 >
                   <MdPerson className="mr-2 text-gray-400" /> Contact
@@ -660,13 +700,13 @@ const ChatWindow = () => {
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
               transition={{ duration: 0.15 }}
-              className="absolute bottom-14 left-0 right-0 mx-2 sm:mx-4 bg-gray-700 rounded-lg shadow-lg z-10"
+              className="absolute bottom-16 left-2 right-2 bg-gray-700 rounded-lg shadow-lg z-20"
             >
               <Picker
                 onEmojiClick={onEmojiClick}
                 theme="dark"
                 emojiStyle="apple"
-                height={300}
+                height={250}
                 width="100%"
                 previewConfig={{ showPreview: false }}
                 searchDisabled
@@ -688,17 +728,89 @@ const ChatWindow = () => {
               onClick={closePreview}
             >
               <div
-                className="relative bg-gray-800 p-6 rounded-lg max-w-[90vw] max-h-[90vh] overflow-auto"
+                className="relative bg-gray-800 p-4 rounded-lg max-w-[80vw] max-h-[80vh] overflow-auto"
                 onClick={(e) => e.stopPropagation()}
               >
                 <button
-                  className="absolute top-2 right-2 text-2xl text-white hover:text-gray-400 z-50"
+                  className="absolute top-2 right-2 text-xl text-white hover:text-gray-400"
                   onClick={closePreview}
                 >
                   ×
                 </button>
                 <div className="flex justify-center items-center">
                   {renderFilePreview(previewFile, true)}
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Profile Modal */}
+        <AnimatePresence>
+          {isProfileModalOpen && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50"
+              onClick={closeProfileModal}
+            >
+              <div
+                className="relative bg-gray-800 p-4 rounded-lg w-[24rem] max-w-[80vw] max-h-[80vh] overflow-auto"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  className="absolute top-2 right-2 text-xl text-white hover:text-gray-400"
+                  onClick={closeProfileModal}
+                  aria-label="Close Profile"
+                >
+                  ×
+                </button>
+                <div className="flex flex-col items-center w-full">
+                  <img
+                    src={userDetails?.avatar === null ? "https://i.pinimg.com/236x/00/80/ee/0080eeaeaa2f2fba77af3e1efeade565.jpg" : userDetails?.avatar}
+                    alt="User Avatar"
+                    className="w-24 h-24 rounded-full mb-3 mt-4"
+                  />
+                  <h2 className="text-lg font-semibold text-white">
+                    {userDetails?.username}
+                  </h2>
+                  <p className="text-gray-400 mb-4">{userDetails?.is_active ? "online" : "offline"}</p>
+                  <div className="w-full mt-4 space-y-4 text-left py-4 px-2 flex flex-col">
+                    {[
+                      {
+                        label: "Add to Favorites",
+                        icon: <FaHeart />,
+                        action: () => alert("Added to Favorites!"),
+                      },
+                      {
+                        label: isUserBlocked ? "Unblock User" : "Block User",
+                        icon: <FaUserTimes className="text-red-500" />,
+                        action: handleBlockUser,
+                      },
+                      {
+                        label: "Report",
+                        icon: <FaExclamationTriangle className="text-red-500" />,
+                        action: () => alert("Reported!"),
+                      },
+                      {
+                        label: "Delete Chat",
+                        icon: <FaTrashAlt className="text-red-500" />,
+                        action: () => alert("Chat Deleted!"),
+                      },
+                    ].map((button, index) => (
+                      <button
+                        key={index}
+                        className="flex items-center px-3 py-2 bg-transparent text-white rounded-lg hover:bg-gray-700 text-sm"
+                        onClick={button.action}
+                        aria-label={button.label}
+                      >
+                        <span className="mr-2">{button.icon}</span>
+                        {button.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
             </motion.div>

@@ -1,20 +1,36 @@
-import "./App.css";
-import ChatPage from "./pages/ChatPage";
-import Login from "./pages/Login";
+import { createBrowserRouter, RouterProvider } from 'react-router-dom'
+import './App.css'
+import Login from './pages/Login'
+import ChatPage from './pages/ChatPage'
+import PrivateRoute from './components/PrivateRoute'
+import { AuthProvider } from './utils/AuthProvider'
 
-import { Routes, Route } from "react-router-dom";
+const appRouter = createBrowserRouter([
+  {
+    path: '/login',
+    element: <Login />,
+    children: []
+  },
+
+  {
+    path: '/',
+    element: <PrivateRoute>
+      <ChatPage />
+    </PrivateRoute>,
+    children: []
+  }
+])
 
 function App() {
-  // const user = true;
 
   return (
     <>
-      <Routes>
-        <Route path="/" element={<ChatPage />} />
-        <Route path="/login" element={<Login />} />
-      </Routes>
+      <AuthProvider>
+        <RouterProvider router={appRouter} />
+      </AuthProvider>
+
     </>
-  );
+  )
 }
 
-export default App;
+export default App
