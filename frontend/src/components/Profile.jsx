@@ -50,19 +50,19 @@ const Profile = () => {
         <div className="relative">
           <motion.img
             src={
-              user?.avatar === null
-                ? "https://i.pinimg.com/236x/00/80/ee/0080eeaeaa2f2fba77af3e1efeade565.jpg"
-                : user?.avatar
+              // user?.avatar === null
+                 "https://i.pinimg.com/236x/00/80/ee/0080eeaeaa2f2fba77af3e1efeade565.jpg"
+                // : user?.avatar
             }
             alt={user?.username || "User"}
             className={`w-[11rem] h-[11rem] rounded-full ${
-              user?.is_active ? "ring-4 ring-green-500" : "ring-4 ring-gray-700"
+              user?.active_status ? "ring-4 ring-green-500" : "ring-4 ring-gray-700"
             }`}
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ type: "spring", stiffness: 120, delay: 0.2 }}
           />
-          {user?.is_active && (
+          {user?.active_status && (
             <motion.div
               className="absolute bottom-2 right-2 w-4 h-4 bg-green-500 rounded-full border-2 border-gray-800"
               initial={{ scale: 0 }}
@@ -75,7 +75,7 @@ const Profile = () => {
           {user?.username || "Loading..."}
         </h2>
         <p className="text-xs text-gray-400">
-          {user?.is_active ? "Online" : "Offline"}
+          {user?.active_status ? "Online" : "Offline"}
         </p>
       </motion.div>
 

@@ -43,11 +43,11 @@ const Login = () => {
         { headers: { 'Content-Type': 'application/json' } }
       );
 
-      const { token, user } = loginResponse.data.data;
+      const loggedInData = loginResponse.data.data;
 
-      console.log(loginResponse.data)
+      console.log(loggedInData)
       
-      login({ ...user, token });
+      login({ ...loggedInData });
       triggerAlert('success', 'Success', 'Login Successful');
       navigate('/');
       resetLogin();

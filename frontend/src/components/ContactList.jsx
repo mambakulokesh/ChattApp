@@ -69,13 +69,13 @@ const ContactList = () => {
         <div className="flex items-center space-x-4 min-w-0">
           <img
             src={
-              user?.avatar === null
-                ? "https://i.pinimg.com/236x/00/80/ee/0080eeaeaa2f2fba77af3e1efeade565.jpg"
-                : user?.avatar
+              // user?.avatar === null
+                 "https://i.pinimg.com/236x/00/80/ee/0080eeaeaa2f2fba77af3e1efeade565.jpg"
+                // : user?.avatar
             }
             alt={user?.username}
             className={`w-8 h-8 rounded-full ${
-              user?.is_active ? "ring-4 ring-green-500" : "ring-4 ring-gray-700"
+              user?.active_status ? "ring-4 ring-green-500" : "ring-4 ring-gray-700"
             }`}
           />
           <div className="flex flex-col leading-tight min-w-0">
@@ -83,7 +83,7 @@ const ContactList = () => {
               {userList?.username}
             </h3>
             <p className="text-xs text-gray-400">
-              {userList?.is_active ? "Online" : "Offline"}
+              {userList?.active_status ? "Online" : "Offline"}
             </p>
           </div>
         </div>

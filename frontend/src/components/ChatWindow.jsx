@@ -23,13 +23,13 @@ import Picker from "emoji-picker-react";
 import { motion, AnimatePresence } from "framer-motion";
 import mammoth from "mammoth";
 import io from "socket.io-client";
-import axios from "axios";
 
 const socket = io("http://38.77.155.139:8000/", {
   reconnection: true,
   reconnectionAttempts: 5,
   transports: ["websocket", "polling"],
   withCredentials: true,
+  autoConnect: false, // Prevent auto-connect
 });
 
 const ChatWindow = () => {
@@ -49,8 +49,10 @@ const ChatWindow = () => {
   const [recordingTime, setRecordingTime] = useState(0);
   const [mediaRecorder, setMediaRecorder] = useState(null);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0); // New state for unread messages
   const audioChunksRef = useRef([]);
   const messagesEndRef = useRef(null);
+  const isFocusedRef = useRef(false); // Track if window is focused
 
   const documentInputRef = useRef(null);
   const photoInputRef = useRef(null);
@@ -58,31 +60,27 @@ const ChatWindow = () => {
   const audioInputRef = useRef(null);
   const contactInputRef = useRef(null);
 
-  // Load messages from localStorage
+  // Initialize socket connection on mount
   useEffect(() => {
-    if (user && userDetails) {
-      const chatKey = `chat_${[user.id, userDetails.id].sort().join("_")}`;
-      const savedMessages = localStorage.getItem(chatKey);
-      if (savedMessages) {
-        setChatMessages(JSON.parse(savedMessages));
-      } else {
-        setChatMessages([]);
-      }
+    if (user && user.token) {
+      console.log("Initiating socket connection...");
+      socket.connect(); // Manually connect socket
     }
-  }, [user, userDetails]);
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [user]);
 
   // Socket.io setup
   useEffect(() => {
-    console.log("Attempting to connect to Socket.IO server...");
+    if (!user || !user.token) return;
+
+    console.log("Setting up Socket.IO listeners...");
 
     socket.on("connect", () => {
       console.log("Connected to Socket.IO server with ID:", socket.id);
-      if (user && user?.token) {
-        console.log("Emitting authenticate event with token:", user.token);
-        socket.emit("authenticate", { token: user.token });
-      } else {
-        console.warn("No user or token available for authentication");
-      }
+      socket.emit("authenticate", { token: user.token });
     });
 
     socket.on("auth_success", (data) => {
@@ -91,7 +89,6 @@ const ChatWindow = () => {
 
     socket.on("auth_error", (error) => {
       console.error("Authentication error:", error.message);
-      // alert(`Authentication failed: ${error.message}. Reconnecting...`);
       socket.disconnect();
       socket.connect();
     });
@@ -120,11 +117,11 @@ const ChatWindow = () => {
           }
           return updatedMessages;
         });
-      } else {
-        console.log("Message ignored due to ID mismatch:", {
-          received: messageData,
-          expected: { receiver_id: user.id, sender_id: userDetails.id },
-        });
+
+        // Increment unread count if window is not focused
+        if (!isFocusedRef.current) {
+          setUnreadCount((prev) => prev + 1);
+        }
       }
     });
 
@@ -158,6 +155,19 @@ const ChatWindow = () => {
     };
   }, [user, userDetails]);
 
+  // Load messages from localStorage
+  useEffect(() => {
+    if (user && userDetails) {
+      const chatKey = `chat_${[user.id, userDetails.id].sort().join("_")}`;
+      const savedMessages = localStorage.getItem(chatKey);
+      if (savedMessages) {
+        setChatMessages(JSON.parse(savedMessages));
+      } else {
+        setChatMessages([]);
+      }
+    }
+  }, [user, userDetails]);
+
   // File reading for documents
   useEffect(() => {
     const readFiles = async () => {
@@ -184,12 +194,34 @@ const ChatWindow = () => {
     readFiles();
   }, [selectedFiles]);
 
-  // Auto-scroll to latest message
+  // Auto-scroll to latest message and reset unread count when focused
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
+    if (isFocusedRef.current) {
+      setUnreadCount(0);
+    }
   }, [chatMessages]);
+
+  // Track window focus for unread messages
+  useEffect(() => {
+    const handleFocus = () => {
+      isFocusedRef.current = true;
+      setUnreadCount(0);
+    };
+    const handleBlur = () => {
+      isFocusedRef.current = false;
+    };
+
+    window.addEventListener("focus", handleFocus);
+    window.addEventListener("blur", handleBlur);
+
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+      window.removeEventListener("blur", handleBlur);
+    };
+  }, []);
 
   // Recording timer
   useEffect(() => {
@@ -297,22 +329,31 @@ const ChatWindow = () => {
     }
   };
 
+  // Convert file to base64
+  const fileToBase64 = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = (error) => reject(error);
+      reader.readAsDataURL(file);
+    });
+  };
+
   const handleSend = async () => {
     if (!isUserBlocked && (message.trim() || selectedFiles.length > 0)) {
-      let fileUrls = [];
+      let fileData = [];
       if (selectedFiles.length > 0) {
         try {
-          const formData = new FormData();
-          selectedFiles.forEach((file) => formData.append("files", file));
-          const response = await axios.post(
-            "http://38.77.155.139:8000/upload/",
-            formData,
-            { headers: { "Content-Type": "multipart/form-data" } }
+          fileData = await Promise.all(
+            selectedFiles.map(async (file) => ({
+              name: file.name,
+              type: file.type,
+              base64: await fileToBase64(file),
+            }))
           );
-          fileUrls = response.data.urls || [];
         } catch (error) {
-          console.error("Error uploading files:", error);
-          alert("Failed to upload files.");
+          console.error("Error converting files to base64:", error);
+          alert("Failed to process files.");
           return;
         }
       }
@@ -321,7 +362,7 @@ const ChatWindow = () => {
         sender_id: user.id,
         receiver_id: userDetails.id,
         content: message.trim(),
-        files: fileUrls,
+        files: fileData,
         timestamp: new Date().toISOString(),
       };
 
@@ -332,7 +373,7 @@ const ChatWindow = () => {
         text: message.trim(),
         files: selectedFiles.map((file, index) => ({
           name: file.name,
-          url: fileUrls[index] || URL.createObjectURL(file),
+          url: URL.createObjectURL(file),
           type: file.type,
         })),
         sender: "self",
@@ -358,7 +399,7 @@ const ChatWindow = () => {
 
   const renderFilePreview = (file, isPreviewModal = false) => {
     const fileType = file.type.split("/")[0];
-    const fileUrl = file.url || URL.createObjectURL(file);
+    const fileUrl = file.url || file.base64 || URL.createObjectURL(file);
 
     switch (fileType) {
       case "image":
@@ -507,15 +548,22 @@ const ChatWindow = () => {
           onClick={openProfileModal}
           className="cursor-pointer flex items-center flex-1 min-w-0"
         >
-          <img
-            src={
-              userDetails?.avatar === null
-                ? "https://i.pinimg.com/236x/00/80/ee/0080eeaeaa2f2fba77af3e1efeade565.jpg"
-                : userDetails?.avatar
-            }
-            alt="User Avatar"
-            className="w-8 h-8 rounded-full mr-2"
-          />
+          <div className="relative">
+            <img
+              src={
+                userDetails?.avatar === null
+                  ? "https://i.pinimg.com/236x/00/80/ee/0080eeaeaa2f2fba77af3e1efeade565.jpg"
+                  : userDetails?.avatar
+              }
+              alt="User Avatar"
+              className="w-8 h-8 rounded-full mr-2"
+            />
+            {unreadCount > 0 && (
+              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center">
+                {unreadCount}
+              </span>
+            )}
+          </div>
           <div className="flex-1 min-w-0">
             <h2 className="text-sm font-semibold text-white truncate">
               {userDetails?.username || "User"}
