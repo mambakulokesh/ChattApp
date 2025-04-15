@@ -4,10 +4,15 @@ import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import axios from 'axios';
 import { triggerAlert } from '../utils/commonFunctions/CommonFunctions';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const Login = () => {
   const { user, login } = useContext(AuthContext);
   const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState('login'); 
+  const [showForms, setShowForms] = useState(false);
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [signupLoading, setSignupLoading] = useState(false);
 
   const {
     register: registerLogin,
@@ -21,73 +26,34 @@ const Login = () => {
     reset: resetSignup,
     formState: { errors: signupErrors },
   } = useForm();
-  const [loginLoading, setLoginLoading] = useState(false);
-  const [signupLoading, setSignupLoading] = useState(false);
-  const [showForms, setShowForms] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => {
       setShowForms(true);
     }, 300);
-
     return () => clearTimeout(timer);
   }, []);
 
   const onLoginSubmit = async (data) => {
     setLoginLoading(true);
     try {
-      console.log('Login Data:', data);
-      
       const loginResponse = await axios.post(
-        'http://38.77.155.139:8001/user/login/',
-        {
-          email: data.email,
-          password: data.password,
-        },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        }
+        'http://38.77.155.139:8000/user/login/',
+        { email: data.email, password: data.password },
+        { headers: { 'Content-Type': 'application/json' } }
       );
 
-      console.log('Login Response:', loginResponse.data);
+      const { token, user } = loginResponse.data.data;
 
+      console.log(loginResponse.data)
       
-      const { token, userId } = loginResponse.data; 
-
-      
-      const usersResponse = await axios.get('http://38.77.155.139:8001/user/get-all-users/', {
-        headers: {
-          Authorization: `Bearer ${token}`, // Include token if required
-          'Content-Type': 'application/json',
-        },
-      });
-
-      console.log('Users Response:', usersResponse.data);
-
-     
-      const loggedInUser = usersResponse.data.find((user) => user.email === data.email);
-
-      if (!loggedInUser) {
-        throw new Error('User not found in the system.');
-      }
-
-      
-      login({
-        ...loggedInUser, 
-        token,
-      });
-
+      login({ ...user, token });
       triggerAlert('success', 'Success', 'Login Successful');
       navigate('/');
       resetLogin();
     } catch (err) {
-      console.error('Login Error:', err);
       const errorMessage =
-        err.response?.data?.message ||
-        err.message ||
-        'Login failed. Please check your credentials and try again.';
+        err.response?.data?.message || err.message || 'Login failed. Please check your credentials.';
       triggerAlert('error', 'Error', errorMessage);
     } finally {
       setLoginLoading(false);
@@ -96,145 +62,256 @@ const Login = () => {
 
   const onSignupSubmit = async (data) => {
     setSignupLoading(true);
-    const payload = {
-      username: data.username,
-      email: data.email,
-      password: data.password,
-    };
-
     try {
-      const response = await axios.post(
-        'http://38.77.155.139:8001/user/register/',
-        payload,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        }
+      await axios.post(
+        'http://38.77.155.139:8000/user/register/',
+        { username: data.username, email: data.email, password: data.password },
+        { headers: { 'Content-Type': 'application/json' } }
       );
       triggerAlert('success', 'Success', 'Registered Successfully');
-      console.log('Signup Response:', response.data);
       resetSignup();
+      setActiveTab('login');
     } catch (err) {
-      console.error('Signup Error:', err);
       const errorMessage = err.response?.data?.message || 'Signup failed. Please try again.';
       triggerAlert('error', 'Error', errorMessage);
-      resetSignup();
     } finally {
       setSignupLoading(false);
     }
   };
 
   return (
-    <div
-      className="min-h-screen flex items-center justify-center bg-cover bg-center relative"
-      style={{
-        backgroundAttachment: 'fixed',
-      }}
-    >
-      <div
-        className="fixed inset-0 md:inset-y-12 md:left-12 md:right-12 bg-black/30 backdrop-blur-sm rounded-lg max-md:rounded-none max-md:inset-0 flex items-center justify-center"
-        style={{
-          padding: '5%',
-          boxSizing: 'border-box',
-          zIndex: 5,
-        }}
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900 bg-cover bg-center relative">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.5 }}
+        className="w-full max-w-md mx-4 bg-gray-800/80 backdrop-blur-lg rounded-2xl shadow-2xl p-6 sm:p-8"
       >
-        <div className="relative z-10 w-full max-w-4xl mx-auto p-4">
-          <div className="flex flex-row space-x-10 max-md:flex-col max-md:space-x-0 max-md:space-y-6">
-            <form
-              onSubmit={handleLoginSubmit(onLoginSubmit)}
-              className={`flex-1 bg-gray-800/70 p-8 rounded-lg shadow-lg backdrop-blur-md space-y-8 transform transition-transform duration-500 ease-in-out ${
-                showForms ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'
-              }`}
-            >
-              <h2 className="text-2xl font-bold text-white mb-6">Welcome back,</h2>
-
-              <div className="mb-4">
-                <input
-                  type="email"
-                  placeholder="Email"
-                  {...registerLogin('email', { required: 'Email is required' })}
-                  className="w-full p-3 bg-gray-700 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  disabled={loginLoading}
-                />
-                {loginErrors.email && <p className="text-red-500 text-sm">{loginErrors.email.message}</p>}
-              </div>
-              <div className="mb-6">
-                <input
-                  type="password"
-                  placeholder="Password"
-                  {...registerLogin('password', { required: 'Password is required' })}
-                  className="w-full p-3 bg-gray-700 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  disabled={loginLoading}
-                />
-                {loginErrors.password && <p className="text-red-500 text-sm">{loginErrors.password.message}</p>}
-              </div>
-              <button
-                type="submit"
-                className="w-full bg-blue-500 text-white p-3 rounded-lg hover:bg-blue-600 transition disabled:bg-blue-300"
-                disabled={loginLoading}
-              >
-                {loginLoading ? 'Logging....' : 'Log In'}
-              </button>
-
-              <p className='text-gray-400 text-center mt-3'>Don't Have an account <span className='text-gray-50'>Register</span></p>
-              
-            </form>
-
-            <div className="w-1 bg-gray-600 my-16 mx-8 max-md:hidden"></div>
-
-            <form
-              onSubmit={handleSignupSubmit(onSignupSubmit)}
-              className={`flex-1 bg-gray-800/70 p-8 rounded-lg shadow-lg backdrop-blur-md transform transition-transform duration-500 ease-in-out ${
-                showForms ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'
-              }`}
-            >
-              <h2 className="text-2xl font-bold text-white mb-6">Create an Account</h2>
-
-              <div className="mb-4">
-                <input
-                  type="text"
-                  placeholder="Username"
-                  {...registerSignup('username', { required: 'Username is required' })}
-                  className="w-full p-3 bg-gray-700 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  disabled={signupLoading}
-                />
-                {signupErrors.username && <p className="text-red-500 text-sm">{signupErrors.username.message}</p>}
-              </div>
-              <div className="mb-4">
-                <input
-                  type="email"
-                  placeholder="Email"
-                  {...registerSignup('email', { required: 'Email is required' })}
-                  className="w-full p-3 bg-gray-700 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  disabled={signupLoading}
-                />
-                {signupErrors.email && <p className="text-red-500 text-sm">{signupErrors.email.message}</p>}
-              </div>
-              <div className="mb-4">
-                <input
-                  type="password"
-                  placeholder="Password"
-                  {...registerSignup('password', { required: 'Password is required' })}
-                  className="w-full p-3 bg-gray-700 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  disabled={signupLoading}
-                />
-                {signupErrors.password && <p className="text-red-500 text-sm">{signupErrors.password.message}</p>}
-              </div>
-              <button
-                type="submit"
-                className="w-full bg-blue-500 text-white p-3 rounded-lg hover:bg-blue-600 transition disabled:bg-blue-300"
-                disabled={signupLoading}
-              >
-                {signupLoading ? 'Registering.....' : 'Register'}
-              </button>
-
-              <p className='text-gray-400 text-center mt-3'>Already Have an account <span className='text-gray-50'>LogIn</span></p>
-            </form>
-          </div>
+        <div className="text-center mb-6">
+          <h1 className="text-3xl font-bold text-white">ChatApp</h1>
+          <p className="text-gray-400 mt-2">Connect with friends seamlessly</p>
         </div>
-      </div>
+
+        <div className="flex border-b border-gray-600 mb-6">
+          <button
+            type="button"
+            className={`flex-1 py-3 text-center text-lg font-semibold transition-colors duration-300 ${
+              activeTab === 'login' ? 'text-white border-b-2 border-blue-500' : 'text-gray-400 hover:text-white'
+            }`}
+            onClick={() => setActiveTab('login')}
+            aria-label="Login Tab"
+          >
+            Login
+          </button>
+          <button
+            type="button"
+            className={`flex-1 py-3 text-center text-lg font-semibold transition-colors duration-300 ${
+              activeTab === 'signup' ? 'text-white border-b-2 border-blue-500' : 'text-gray-400 hover:text-white'
+            }`}
+            onClick={() => setActiveTab(',signup')}
+            aria-label="Signup Tab"
+          >
+            Register
+          </button>
+        </div>
+
+        <AnimatePresence mode="wait">
+          {activeTab === 'login' ? (
+            <motion.form
+              key="login"
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 20 }}
+              transition={{ duration: 0.3 }}
+              onSubmit={handleLoginSubmit(onLoginSubmit)}
+              className="space-y-6"
+              aria-labelledby="login-heading"
+            >
+              <h2 id="login-heading" className="sr-only">
+                Login Form
+              </h2>
+              <div>
+                <label htmlFor="login-email" className="block text-sm font-medium text-gray-300 mb-1">
+                  Email
+                </label>
+                <input
+                  id="login-email"
+                  type="email"
+                  placeholder="Enter your email"
+                  {...registerLogin('email', { required: 'Email is required' })}
+                  className="w-full p-3 bg-gray-700/50 text-white rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                  disabled={loginLoading}
+                  aria-invalid={loginErrors.email ? 'true' : 'false'}
+                />
+                {loginErrors.email && (
+                  <p className="text-red-400 text-sm mt-1" role="alert">
+                    {loginErrors.email.message}
+                  </p>
+                )}
+              </div>
+              <div>
+                <label htmlFor="login-password" className="block text-sm font-medium text-gray-300 mb-1">
+                  Password
+                </label>
+                <input
+                  id="login-password"
+                  type="password"
+                  placeholder="Enter your password"
+                  {...registerLogin('password', { required: 'Password is required' })}
+                  className="w-full p-3 bg-gray-700/50 text-white rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                  disabled={loginLoading}
+                  aria-invalid={loginErrors.password ? 'true' : 'false'}
+                />
+                {loginErrors.password && (
+                  <p className="text-red-400 text-sm mt-1" role="alert">
+                    {loginErrors.password.message}
+                  </p>
+                )}
+              </div>
+              <button
+                type="submit"
+                className="w-full bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-800 transition-colors disabled:bg-blue-400"
+                disabled={loginLoading}
+                aria-busy={loginLoading}
+              >
+                {loginLoading ? (
+                  <span className="flex items-center justify-center">
+                    <svg
+                      className="animate-spin h-5 w-5 mr-2 text-white"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      ></circle>
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      ></path>
+                    </svg>
+                    Logging in...
+                  </span>
+                ) : (
+                  'Log In'
+                )}
+              </button>
+            </motion.form>
+          ) : (
+            <motion.form
+              key="signup"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              transition={{ duration: 0.3 }}
+              onSubmit={handleSignupSubmit(onSignupSubmit)}
+              className="space-y-6"
+              aria-labelledby="signup-heading"
+            >
+              <h2 id="signup-heading" className="sr-only">
+                Signup Form
+              </h2>
+              <div>
+                <label htmlFor="signup-username" className="block text-sm font-medium text-gray-300 mb-1">
+                  Username
+                </label>
+                <input
+                  id="signup-username"
+                  type="text"
+                  placeholder="Choose a username"
+                  {...registerSignup('username', { required: 'Username is required' })}
+                  className="w-full p-3 bg-gray-700/50 text-white rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                  disabled={signupLoading}
+                  aria-invalid={signupErrors.username ? 'true' : 'false'}
+                />
+                {signupErrors.username && (
+                  <p className="text-red-400 text-sm mt-1" role="alert">
+                    {signupErrors.username.message}
+                  </p>
+                )}
+              </div>
+              <div>
+                <label htmlFor="signup-email" className="block text-sm font-medium text-gray-300 mb-1">
+                  Email
+                </label>
+                <input
+                  id="signup-email"
+                  type="email"
+                  placeholder="Enter your email"
+                  {...registerSignup('email', { required: 'Email is required' })}
+                  className="w-full p-3 bg-gray-700/50 text-white rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                  disabled={signupLoading}
+                  aria-invalid={signupErrors.email ? 'true' : 'false'}
+                />
+                {signupErrors.email && (
+                  <p className="text-red-400 text-sm mt-1" role="alert">
+                    {signupErrors.email.message}
+                  </p>
+                )}
+              </div>
+              <div>
+                <label htmlFor="signup-password" className="block text-sm font-medium text-gray-300 mb-1">
+                  Password
+                </label>
+                <input
+                  id="signup-password"
+                  type="password"
+                  placeholder="Create a password"
+                  {...registerSignup('password', { required: 'Password is required' })}
+                  className="w-full p-3 bg-gray-700/50 text-white rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                  disabled={signupLoading}
+                  aria-invalid={signupErrors.password ? 'true' : 'false'}
+                />
+                {signupErrors.password && (
+                  <p className="text-red-400 text-sm mt-1" role="alert">
+                    {signupErrors.password.message}
+                  </p>
+                )}
+              </div>
+              <button
+                type="submit"
+                className="w-full bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-800 transition-colors disabled:bg-blue-400"
+                disabled={signupLoading}
+                aria-busy={signupLoading}
+              >
+                {signupLoading ? (
+                  <span className="flex items-center justify-center">
+                    <svg
+                      className="animate-spin h-5 w-5 mr-2 text-white"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      ></circle>
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      ></path>
+                    </svg>
+                    Registering...
+                  </span>
+                ) : (
+                  'Register'
+                )}
+              </button>
+            </motion.form>
+          )}
+        </AnimatePresence>
+      </motion.div>
     </div>
   );
 };

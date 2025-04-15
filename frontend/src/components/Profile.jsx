@@ -55,7 +55,7 @@ const Profile = () => {
                 : user?.avatar
             }
             alt={user?.username || "User"}
-            className={`w-[12rem] h-[12rem] rounded-full ${
+            className={`w-[11rem] h-[11rem] rounded-full ${
               user?.is_active ? "ring-4 ring-green-500" : "ring-4 ring-gray-700"
             }`}
             initial={{ scale: 0.8, opacity: 0 }}

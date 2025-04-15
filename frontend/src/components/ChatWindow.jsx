@@ -1,5 +1,14 @@
 import React, { useState, useRef, useEffect, useContext } from "react";
-import { FaMicrophone, FaSmile, FaMapPin, FaCamera, FaHeart, FaUserTimes, FaExclamationTriangle, FaTrashAlt } from "react-icons/fa";
+import {
+  FaMicrophone,
+  FaSmile,
+  FaMapPin,
+  FaCamera,
+  FaHeart,
+  FaUserTimes,
+  FaExclamationTriangle,
+  FaTrashAlt,
+} from "react-icons/fa";
 import { FaPhone, FaVideo } from "react-icons/fa";
 import { HiDotsVertical } from "react-icons/hi";
 import { AuthContext } from "../utils/AuthProvider";
@@ -14,33 +23,26 @@ import Picker from "emoji-picker-react";
 import { motion, AnimatePresence } from "framer-motion";
 import mammoth from "mammoth";
 import io from "socket.io-client";
+import axios from "axios";
 
 const socket = io("http://38.77.155.139:8000/", {
   reconnection: true,
   reconnectionAttempts: 5,
+  transports: ["websocket", "polling"],
+  withCredentials: true,
 });
 
 const ChatWindow = () => {
-  const { userDetails } = useContext(AuthContext);
+  const { user, userDetails } = useContext(AuthContext);
+  const isuserEmpty = !userDetails || Object.keys(userDetails).length === 0;
 
-  
-  const isUserDetailsEmpty = !userDetails || Object.keys(userDetails).length === 0;
-
-  // State and logic remain the same as in your original code
   const [isPinDropdownOpen, setIsPinDropdownOpen] = useState(false);
   const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
   const [message, setMessage] = useState("");
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [showMenu, setShowMenu] = useState(false);
   const [isUserBlocked, setIsUserBlocked] = useState(false);
-  const [chatMessages, setChatMessages] = useState([
-    {
-      text: "just a bit busy with work",
-      sender: "other",
-      time: "24 minutes ago",
-    },
-    { text: "how was your day?", sender: "self", time: "40 minutes ago" },
-  ]);
+  const [chatMessages, setChatMessages] = useState([]);
   const [previewFile, setPreviewFile] = useState(null);
   const [fileContents, setFileContents] = useState({});
   const [isRecording, setIsRecording] = useState(false);
@@ -56,31 +58,107 @@ const ChatWindow = () => {
   const audioInputRef = useRef(null);
   const contactInputRef = useRef(null);
 
+  // Load messages from localStorage
   useEffect(() => {
+    if (user && userDetails) {
+      const chatKey = `chat_${[user.id, userDetails.id].sort().join("_")}`;
+      const savedMessages = localStorage.getItem(chatKey);
+      if (savedMessages) {
+        setChatMessages(JSON.parse(savedMessages));
+      } else {
+        setChatMessages([]);
+      }
+    }
+  }, [user, userDetails]);
+
+  // Socket.io setup
+  useEffect(() => {
+    console.log("Attempting to connect to Socket.IO server...");
+
     socket.on("connect", () => {
-      console.log("Connected to Socket.IO server");
+      console.log("Connected to Socket.IO server with ID:", socket.id);
+      if (user && user?.token) {
+        console.log("Emitting authenticate event with token:", user.token);
+        socket.emit("authenticate", { token: user.token });
+      } else {
+        console.warn("No user or token available for authentication");
+      }
     });
 
-    socket.on("receiveMessage", (newMessage) => {
-      setChatMessages((prevMessages) => [...prevMessages, newMessage]);
+    socket.on("auth_success", (data) => {
+      console.log("Authentication successful:", data);
+    });
+
+    socket.on("auth_error", (error) => {
+      console.error("Authentication error:", error.message);
+      // alert(`Authentication failed: ${error.message}. Reconnecting...`);
+      socket.disconnect();
+      socket.connect();
+    });
+
+    socket.on("new_message", (messageData) => {
+      console.log("Received new_message:", messageData);
+      if (
+        messageData.receiver_id === user.id &&
+        messageData.sender_id === userDetails.id
+      ) {
+        const newMessage = {
+          text: messageData.content,
+          files: messageData.files || [],
+          sender: "other",
+          time: new Date(messageData.timestamp).toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+        };
+
+        setChatMessages((prevMessages) => {
+          const updatedMessages = [...prevMessages, newMessage];
+          if (!isuserEmpty) {
+            const chatKey = `chat_${[user.id, userDetails.id].sort().join("_")}`;
+            localStorage.setItem(chatKey, JSON.stringify(updatedMessages));
+          }
+          return updatedMessages;
+        });
+      } else {
+        console.log("Message ignored due to ID mismatch:", {
+          received: messageData,
+          expected: { receiver_id: user.id, sender_id: userDetails.id },
+        });
+      }
+    });
+
+    socket.on("message_sent", (data) => {
+      console.log("Message sent confirmation:", data);
+    });
+
+    socket.on("error", (error) => {
+      console.error("Socket.IO error:", error);
+      alert(`Socket.IO error: ${error.message || JSON.stringify(error)}`);
     });
 
     socket.on("connect_error", (error) => {
       console.error("Socket.IO connection error:", error);
+      alert(`Connection failed: ${error.message || JSON.stringify(error)}`);
     });
 
     socket.on("disconnect", (reason) => {
-      console.log("Disconnected:", reason);
+      console.log("Disconnected from Socket.IO server:", reason);
     });
 
     return () => {
       socket.off("connect");
-      socket.off("receiveMessage");
+      socket.off("auth_success");
+      socket.off("auth_error");
+      socket.off("new_message");
+      socket.off("message_sent");
+      socket.off("error");
       socket.off("connect_error");
       socket.off("disconnect");
     };
-  }, []);
+  }, [user, userDetails]);
 
+  // File reading for documents
   useEffect(() => {
     const readFiles = async () => {
       const textFiles = selectedFiles.filter(
@@ -106,12 +184,14 @@ const ChatWindow = () => {
     readFiles();
   }, [selectedFiles]);
 
+  // Auto-scroll to latest message
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [chatMessages]);
 
+  // Recording timer
   useEffect(() => {
     let interval;
     if (isRecording) {
@@ -217,24 +297,60 @@ const ChatWindow = () => {
     }
   };
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!isUserBlocked && (message.trim() || selectedFiles.length > 0)) {
-      const newMessage = {
-        text: message.trim(),
-        files:
-          selectedFiles.length > 0
-            ? selectedFiles.map((file) => ({
-                name: file.name,
-                type: file.type,
-                url: URL.createObjectURL(file),
-              }))
-            : [],
-        sender: "self",
-        time: new Date().toLocaleString().slice(10, 16),
+      let fileUrls = [];
+      if (selectedFiles.length > 0) {
+        try {
+          const formData = new FormData();
+          selectedFiles.forEach((file) => formData.append("files", file));
+          const response = await axios.post(
+            "http://38.77.155.139:8000/upload/",
+            formData,
+            { headers: { "Content-Type": "multipart/form-data" } }
+          );
+          fileUrls = response.data.urls || [];
+        } catch (error) {
+          console.error("Error uploading files:", error);
+          alert("Failed to upload files.");
+          return;
+        }
+      }
+
+      const messageData = {
+        sender_id: user.id,
+        receiver_id: userDetails.id,
+        content: message.trim(),
+        files: fileUrls,
+        timestamp: new Date().toISOString(),
       };
 
-      socket.emit("sendMessage", newMessage);
-      setChatMessages((prevMessages) => [...prevMessages, newMessage]);
+      console.log("Sending private_message:", messageData);
+      socket.emit("private_message", messageData);
+
+      const newMessage = {
+        text: message.trim(),
+        files: selectedFiles.map((file, index) => ({
+          name: file.name,
+          url: fileUrls[index] || URL.createObjectURL(file),
+          type: file.type,
+        })),
+        sender: "self",
+        time: new Date().toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      };
+
+      setChatMessages((prevMessages) => {
+        const updatedMessages = [...prevMessages, newMessage];
+        if (!isuserEmpty) {
+          const chatKey = `chat_${[user.id, userDetails.id].sort().join("_")}`;
+          localStorage.setItem(chatKey, JSON.stringify(updatedMessages));
+        }
+        return updatedMessages;
+      });
+
       setMessage("");
       setSelectedFiles([]);
     }
@@ -372,17 +488,17 @@ const ChatWindow = () => {
     visible: { opacity: 1, y: 0 },
   };
 
-  
-  if (isUserDetailsEmpty) {
+  if (isuserEmpty) {
     return (
       <div className="flex flex-col h-full w-full bg-gray-900 justify-center items-center">
-        <h2 className="text-white text-lg font-semibold">Start Your Conversation</h2>
+        <h2 className="text-white text-lg font-semibold">
+          Start Your Conversation
+        </h2>
         <p className="text-gray-400 mt-2">Select a user to begin chatting.</p>
       </div>
     );
   }
 
-  
   return (
     <div className="flex flex-col h-full w-full bg-gray-900">
       {/* Header */}
@@ -392,7 +508,11 @@ const ChatWindow = () => {
           className="cursor-pointer flex items-center flex-1 min-w-0"
         >
           <img
-            src={userDetails?.avatar === null ? "https://i.pinimg.com/236x/00/80/ee/0080eeaeaa2f2fba77af3e1efeade565.jpg" : userDetails?.avatar}
+            src={
+              userDetails?.avatar === null
+                ? "https://i.pinimg.com/236x/00/80/ee/0080eeaeaa2f2fba77af3e1efeade565.jpg"
+                : userDetails?.avatar
+            }
             alt="User Avatar"
             className="w-8 h-8 rounded-full mr-2"
           />
@@ -436,7 +556,12 @@ const ChatWindow = () => {
                 </button>
                 <button
                   className="block px-3 py-2 text-sm hover:bg-gray-600 w-full text-left"
-                  onClick={() => alert("Chat Cleared")}
+                  onClick={() => {
+                    alert("Chat Cleared");
+                    setChatMessages([]);
+                    const chatKey = `chat_${[user.id, userDetails.id].sort().join("_")}`;
+                    localStorage.removeItem(chatKey);
+                  }}
                 >
                   Clear Chat
                 </button>
@@ -448,62 +573,73 @@ const ChatWindow = () => {
 
       {/* Chat Messages Area */}
       <div className="flex-1 p-3 overflow-y-auto">
-        {chatMessages.map((msg, index) => (
-          <motion.div
-            key={index}
-            variants={messageVariants}
-            initial="hidden"
-            animate="visible"
-            className={`flex ${
-              msg.sender === "self" ? "justify-end" : "items-start"
-            } mb-3`}
-          >
-            {msg.sender === "other" && (
-              <img
-                src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSPtJ1GSMcrDjNkB6Y_IZQwK4watXeN1fvgAQ&s"
-                alt="User Avatar"
-                className="w-6 h-6 rounded-full mr-2 flex-shrink-0"
-              />
-            )}
-            <div className="max-w-[80%]">
-              {msg.text && (
-                <div
-                  className={`p-2 rounded-lg text-sm ${
-                    msg.sender === "self"
-                      ? "bg-blue-600 text-white"
-                      : "bg-gray-700 text-white"
+        {chatMessages.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-gray-400">
+            <p>No messages yet.</p>
+            <p>Start the conversation!</p>
+          </div>
+        ) : (
+          chatMessages.map((msg, index) => (
+            <motion.div
+              key={index}
+              variants={messageVariants}
+              initial="hidden"
+              animate="visible"
+              className={`flex ${
+                msg.sender === "self" ? "justify-end" : "items-start"
+              } mb-3`}
+            >
+              {msg.sender === "other" && (
+                <img
+                  src={
+                    userDetails?.avatar === null
+                      ? "https://i.pinimg.com/236x/00/80/ee/0080eeaeaa2f2fba77af3e1efeade565.jpg"
+                      : userDetails?.avatar
+                  }
+                  alt="User Avatar"
+                  className="w-6 h-6 rounded-full mr-2 flex-shrink-0"
+                />
+              )}
+              <div className="max-w-[80%]">
+                {msg.text && (
+                  <div
+                    className={`p-2 rounded-lg text-sm ${
+                      msg.sender === "self"
+                        ? "bg-blue-600 text-white"
+                        : "bg-gray-700 text-white"
+                    }`}
+                  >
+                    {msg.text}
+                  </div>
+                )}
+                {msg.files && msg.files.length > 0 && (
+                  <div className="mt-2 flex flex-col gap-1">
+                    {msg.files.map((file, fileIndex) => (
+                      <div
+                        key={fileIndex}
+                        className={`p-2 rounded-lg cursor-pointer ${
+                          msg.sender === "self"
+                            ? "bg-blue-600 text-white"
+                            : "bg-gray-700 text-white"
+                        }`}
+                        onClick={() => handleFileClick(file)}
+                      >
+                        {renderFilePreview(file)}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <p
+                  className={`text-xs text-gray-400 mt-1 ${
+                    msg.sender === "self" ? "text-right" : ""
                   }`}
                 >
-                  {msg.text}
-                </div>
-              )}
-              {msg.files && msg.files.length > 0 && (
-                <div className="mt-2 flex flex-col gap-1">
-                  {msg.files.map((file, fileIndex) => (
-                    <div
-                      key={fileIndex}
-                      className={`p-2 rounded-lg cursor-pointer ${
-                        msg.sender === "self"
-                          ? "bg-blue-600 text-white"
-                          : "bg-gray-700 text-white"
-                      }`}
-                      onClick={() => handleFileClick(file)}
-                    >
-                      {renderFilePreview(file)}
-                    </div>
-                  ))}
-                </div>
-              )}
-              <p
-                className={`text-xs text-gray-400 mt-1 ${
-                  msg.sender === "self" ? "text-right" : ""
-                }`}
-              >
-                {msg.time}
-              </p>
-            </div>
-          </motion.div>
-        ))}
+                  {msg.time}
+                </p>
+              </div>
+            </motion.div>
+          ))
+        )}
         <div ref={messagesEndRef} />
       </div>
 
@@ -767,16 +903,26 @@ const ChatWindow = () => {
                 >
                   ×
                 </button>
-                <div className="flex flex-col items-center w-full">
+                <div className="flex flex-col items-center w-full p-6">
                   <img
-                    src={userDetails?.avatar === null ? "https://i.pinimg.com/236x/00/80/ee/0080eeaeaa2f2fba77af3e1efeade565.jpg" : userDetails?.avatar}
+                    src={
+                      userDetails?.avatar === null
+                        ? "https://i.pinimg.com/236x/00/80/ee/0080eeaeaa2f2fba77af3e1efeade565.jpg"
+                        : userDetails?.avatar
+                    }
                     alt="User Avatar"
-                    className="w-24 h-24 rounded-full mb-3 mt-4"
+                    className={`w-[7rem] h-[7rem] rounded-full ${
+                      userDetails?.is_active
+                        ? "ring-4 ring-green-500"
+                        : "ring-4 ring-gray-700"
+                    }`}
                   />
-                  <h2 className="text-lg font-semibold text-white">
+                  <h2 className="text-lg mt-3 font-semibold text-white">
                     {userDetails?.username}
                   </h2>
-                  <p className="text-gray-400 mb-4">{userDetails?.is_active ? "online" : "offline"}</p>
+                  <p className="text-gray-400 mb-4">
+                    {userDetails?.is_active ? "online" : "offline"}
+                  </p>
                   <div className="w-full mt-4 space-y-4 text-left py-4 px-2 flex flex-col">
                     {[
                       {
@@ -791,13 +937,20 @@ const ChatWindow = () => {
                       },
                       {
                         label: "Report",
-                        icon: <FaExclamationTriangle className="text-red-500" />,
+                        icon: (
+                          <FaExclamationTriangle className="text-red-500" />
+                        ),
                         action: () => alert("Reported!"),
                       },
                       {
                         label: "Delete Chat",
                         icon: <FaTrashAlt className="text-red-500" />,
-                        action: () => alert("Chat Deleted!"),
+                        action: () => {
+                          alert("Chat Deleted!");
+                          setChatMessages([]);
+                          const chatKey = `chat_${[user.id, userDetails.id].sort().join("_")}`;
+                          localStorage.removeItem(chatKey);
+                        },
                       },
                     ].map((button, index) => (
                       <button

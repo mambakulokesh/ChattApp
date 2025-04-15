@@ -10,7 +10,7 @@ const ChatPage = () => {
         <div className="w-1/4 h-full bg-white border-gray-200">
           <ContactList />
         </div>
-        <div className="w-2/4 h-full bg-gray-50">
+        <div className="w-2/3 h-full bg-gray-50">
           <ChatWindow />
         </div>
         <div className="w-1/4 h-full bg-white border-gray-200">
