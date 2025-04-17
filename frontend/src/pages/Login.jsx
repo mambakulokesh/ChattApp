@@ -45,7 +45,7 @@ const Login = () => {
 
       const loggedInData = loginResponse.data.data;
 
-      console.log(loggedInData)
+      // console.log(loggedInData)
       
       login({ ...loggedInData });
       triggerAlert('success', 'Success', 'Login Successful');

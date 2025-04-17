@@ -9,6 +9,9 @@ import {
   FaShieldAlt,
 } from "react-icons/fa";
 import { motion } from "framer-motion";
+import axios from "axios";
+
+import { socket } from "../utils/commonFunctions/SocketConnection";
 
 const fadeScaleVariant = {
   hidden: { opacity: 0, scale: 0.9 },
@@ -26,13 +29,30 @@ const Profile = () => {
   const navigate = useNavigate();
   const { user, logout } = useContext(AuthContext);
 
-  useEffect(() => {
-    console.log("Profile user:", user);
-  }, [user]);
+  // useEffect(() => {
+  //   console.log("Profile user:", user);
+  // }, [user]);
 
-  const handleLogout = () => {
-    logout();
-    navigate("/login", { replace: true });
+  const handleLogout = async () => {
+    try {
+      await axios.post(
+        "http://38.77.155.139:8000/user/logout/",
+        {},
+        {
+          headers: {
+            Authorization: `Bearer ${user?.token}`,
+          },
+        }
+      );
+      console.log("Logout successful");
+    } catch (error) {
+      console.error("Error during logout:", error.response?.data || error.message);
+      // alert("Logout failed on server. Logging out locally.");
+    } finally {
+      socket.disconnect();
+      logout();
+      navigate("/login", { replace: true });
+    }
   };
 
   return (
@@ -51,8 +71,8 @@ const Profile = () => {
           <motion.img
             src={
               // user?.avatar === null
-                 "https://i.pinimg.com/236x/00/80/ee/0080eeaeaa2f2fba77af3e1efeade565.jpg"
-                // : user?.avatar
+              "https://i.pinimg.com/236x/00/80/ee/0080eeaeaa2f2fba77af3e1efeade565.jpg"
+              // : user?.avatar
             }
             alt={user?.username || "User"}
             className={`w-[11rem] h-[11rem] rounded-full ${
@@ -79,12 +99,24 @@ const Profile = () => {
         </p>
       </motion.div>
 
+      {/* About */}
+      <div className="p-3 space-y-2 text-white flex-1">
+        <h3 className="text-xs font-semibold text-gray-400 mb-2">About</h3>
+        <motion.p
+          className="text-sm text-white whitespace-pre-wrap break-words p-3"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+        >
+          {user?.bio || "No bio available"}
+        </motion.p>
+      </div>
+
       {/* Chat Settings */}
       <div className="p-3 space-y-2 text-white flex-1">
         <h3 className="text-xs font-semibold text-gray-400 mb-2">
           Chat settings
         </h3>
-
         {[
           { icon: <FaBell className="mr-2" />, label: "Notification" },
           { icon: <FaPhotoVideo className="mr-2" />, label: "Media" },

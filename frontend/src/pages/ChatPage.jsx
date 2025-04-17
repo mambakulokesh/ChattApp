@@ -5,7 +5,7 @@ import ContactList from '../components/ContactList';
 import { FaUser, FaComments, FaAddressBook } from 'react-icons/fa';
 
 const ChatPage = () => {
-  const [activeTab, setActiveTab] = useState('chat'); // Track active component on mobile
+  const [activeTab, setActiveTab] = useState('chat');
 
   return (
     <div className="flex justify-center items-center min-h-screen w-screen bg-gray-100 p-2 sm:p-4">

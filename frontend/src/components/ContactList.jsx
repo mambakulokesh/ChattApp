@@ -82,8 +82,9 @@ const ContactList = () => {
             <h3 className="text-md font-semibold truncate">
               {userList?.username}
             </h3>
+
             <p className="text-xs text-gray-400">
-              {userList?.active_status ? "Online" : "Offline"}
+              {userList?.bio}
             </p>
           </div>
         </div>

@@ -22,15 +22,8 @@ import {
 import Picker from "emoji-picker-react";
 import { motion, AnimatePresence } from "framer-motion";
 import mammoth from "mammoth";
-import io from "socket.io-client";
-
-const socket = io("http://38.77.155.139:8000/", {
-  reconnection: true,
-  reconnectionAttempts: 5,
-  transports: ["websocket", "polling"],
-  withCredentials: true,
-  autoConnect: false, // Prevent auto-connect
-});
+import axios from "axios";
+import { socket } from "../utils/commonFunctions/SocketConnection";
 
 const ChatWindow = () => {
   const { user, userDetails } = useContext(AuthContext);
@@ -49,10 +42,8 @@ const ChatWindow = () => {
   const [recordingTime, setRecordingTime] = useState(0);
   const [mediaRecorder, setMediaRecorder] = useState(null);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(0); // New state for unread messages
   const audioChunksRef = useRef([]);
   const messagesEndRef = useRef(null);
-  const isFocusedRef = useRef(false); // Track if window is focused
 
   const documentInputRef = useRef(null);
   const photoInputRef = useRef(null);
@@ -64,7 +55,7 @@ const ChatWindow = () => {
   useEffect(() => {
     if (user && user.token) {
       console.log("Initiating socket connection...");
-      socket.connect(); // Manually connect socket
+      socket.connect();
     }
 
     return () => {
@@ -72,7 +63,48 @@ const ChatWindow = () => {
     };
   }, [user]);
 
-  // Socket.io setup
+  // Fetch messages from API when user or userDetails changes
+  const fetchMessages = async () => {
+    if (user && userDetails && user.token && userDetails.id) {
+      try {
+        console.log("Fetching messages for user:", userDetails.id);
+        const response = await axios.get(
+          `http://38.77.155.139:8000/messaging/get-message/?sender_id=${user.id}&receiver_id=${userDetails.id}`,
+          {
+            headers: {
+              Authorization: `Bearer ${user.token}`,
+            },
+          }
+        );
+
+        const messages = response.data.map((msg) => ({
+          id: msg.id,
+          text: msg.content || "",
+          files: [], // No files in provided data
+          sender: msg.sender === user.id ? "self" : "other",
+          time: new Date(msg.timestamp).toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+        }));
+
+        // Clear previous messages and set new ones for the selected user
+        setChatMessages(messages);
+      } catch (error) {
+        console.error("Error fetching messages:", error);
+        setChatMessages([]);
+      }
+    } else {
+      // Clear messages if no user is selected
+      setChatMessages([]);
+    }
+  };
+
+  useEffect(() => {
+    fetchMessages();
+  }, [user, userDetails]);
+
+  // Socket.io setup and fetch messages after auth_success
   useEffect(() => {
     if (!user || !user.token) return;
 
@@ -85,6 +117,10 @@ const ChatWindow = () => {
 
     socket.on("auth_success", (data) => {
       console.log("Authentication successful:", data);
+      // Fetch messages if a user is already selected
+      if (userDetails && userDetails.id) {
+        fetchMessages();
+      }
     });
 
     socket.on("auth_error", (error) => {
@@ -95,33 +131,35 @@ const ChatWindow = () => {
 
     socket.on("new_message", (messageData) => {
       console.log("Received new_message:", messageData);
-      if (
-        messageData.receiver_id === user.id &&
-        messageData.sender_id === userDetails.id
-      ) {
+
+      // Check if the message is relevant to the current chat
+      const isRelevantMessage =
+        (messageData.receiver === user.id &&
+          messageData.sender === userDetails.id) ||
+        (messageData.sender === user.id &&
+          messageData.receiver === userDetails.id);
+
+      if (isRelevantMessage) {
         const newMessage = {
-          text: messageData.content,
-          files: messageData.files || [],
-          sender: "other",
+          id: messageData.id,
+          text: messageData.content || "",
+          files: [], // No files in provided data
+          sender: messageData.sender === user.id ? "self" : "other",
           time: new Date(messageData.timestamp).toLocaleTimeString([], {
             hour: "2-digit",
             minute: "2-digit",
           }),
         };
 
+        // Add new message, avoiding duplicates
         setChatMessages((prevMessages) => {
-          const updatedMessages = [...prevMessages, newMessage];
-          if (!isuserEmpty) {
-            const chatKey = `chat_${[user.id, userDetails.id].sort().join("_")}`;
-            localStorage.setItem(chatKey, JSON.stringify(updatedMessages));
+          if (prevMessages.some((msg) => msg.id === newMessage.id)) {
+            return prevMessages; // Skip if message already exists
           }
-          return updatedMessages;
+          return [...prevMessages, newMessage];
         });
-
-        // Increment unread count if window is not focused
-        if (!isFocusedRef.current) {
-          setUnreadCount((prev) => prev + 1);
-        }
+      } else {
+        console.log("Message ignored: Not relevant to current chat");
       }
     });
 
@@ -155,19 +193,6 @@ const ChatWindow = () => {
     };
   }, [user, userDetails]);
 
-  // Load messages from localStorage
-  useEffect(() => {
-    if (user && userDetails) {
-      const chatKey = `chat_${[user.id, userDetails.id].sort().join("_")}`;
-      const savedMessages = localStorage.getItem(chatKey);
-      if (savedMessages) {
-        setChatMessages(JSON.parse(savedMessages));
-      } else {
-        setChatMessages([]);
-      }
-    }
-  }, [user, userDetails]);
-
   // File reading for documents
   useEffect(() => {
     const readFiles = async () => {
@@ -194,34 +219,11 @@ const ChatWindow = () => {
     readFiles();
   }, [selectedFiles]);
 
-  // Auto-scroll to latest message and reset unread count when focused
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
-    if (isFocusedRef.current) {
-      setUnreadCount(0);
-    }
   }, [chatMessages]);
-
-  // Track window focus for unread messages
-  useEffect(() => {
-    const handleFocus = () => {
-      isFocusedRef.current = true;
-      setUnreadCount(0);
-    };
-    const handleBlur = () => {
-      isFocusedRef.current = false;
-    };
-
-    window.addEventListener("focus", handleFocus);
-    window.addEventListener("blur", handleBlur);
-
-    return () => {
-      window.removeEventListener("focus", handleFocus);
-      window.removeEventListener("blur", handleBlur);
-    };
-  }, []);
 
   // Recording timer
   useEffect(() => {
@@ -333,7 +335,10 @@ const ChatWindow = () => {
   const fileToBase64 = (file) => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = () => resolve(reader.result);
+      reader.onload = () => {
+        const base64String = reader.result.split(",")[1];
+        resolve(base64String);
+      };
       reader.onerror = (error) => reject(error);
       reader.readAsDataURL(file);
     });
@@ -359,17 +364,27 @@ const ChatWindow = () => {
       }
 
       const messageData = {
-        sender_id: user.id,
-        receiver_id: userDetails.id,
+        sender: user.id,
+        receiver: userDetails.id,
         content: message.trim(),
         files: fileData,
         timestamp: new Date().toISOString(),
       };
 
       console.log("Sending private_message:", messageData);
-      socket.emit("private_message", messageData);
+      socket.emit("private_message", messageData, (response) => {
+        if (response && response.error) {
+          console.error("Error sending message:", response.error);
+          alert("Failed to send message.");
+        } else {
+          console.log("Message sent successfully:", response);
+          // Fetch messages instantly after sending
+          fetchMessages();
+        }
+      });
 
       const newMessage = {
+        id: Date.now(), // Temporary ID until server responds
         text: message.trim(),
         files: selectedFiles.map((file, index) => ({
           name: file.name,
@@ -383,14 +398,7 @@ const ChatWindow = () => {
         }),
       };
 
-      setChatMessages((prevMessages) => {
-        const updatedMessages = [...prevMessages, newMessage];
-        if (!isuserEmpty) {
-          const chatKey = `chat_${[user.id, userDetails.id].sort().join("_")}`;
-          localStorage.setItem(chatKey, JSON.stringify(updatedMessages));
-        }
-        return updatedMessages;
-      });
+      setChatMessages((prevMessages) => [...prevMessages, newMessage]);
 
       setMessage("");
       setSelectedFiles([]);
@@ -399,7 +407,16 @@ const ChatWindow = () => {
 
   const renderFilePreview = (file, isPreviewModal = false) => {
     const fileType = file.type.split("/")[0];
-    const fileUrl = file.url || file.base64 || URL.createObjectURL(file);
+    const fileUrl = file.url;
+
+    if (!fileUrl) {
+      return (
+        <div className="flex items-center gap-2">
+          <MdInsertDriveFile className="text-gray-400" />
+          <span>{file.name} (File not available)</span>
+        </div>
+      );
+    }
 
     switch (fileType) {
       case "image":
@@ -496,17 +513,10 @@ const ChatWindow = () => {
   };
 
   const handleFileClick = (file) => {
-    const fileWithUrl = {
-      ...file,
-      url: file.url || URL.createObjectURL(file),
-    };
-    setPreviewFile(fileWithUrl);
+    setPreviewFile(file);
   };
 
   const closePreview = () => {
-    if (previewFile?.url && !previewFile.url.startsWith("blob:")) {
-      URL.revokeObjectURL(previewFile.url);
-    }
     setPreviewFile(null);
   };
 
@@ -558,11 +568,6 @@ const ChatWindow = () => {
               alt="User Avatar"
               className="w-8 h-8 rounded-full mr-2"
             />
-            {unreadCount > 0 && (
-              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center">
-                {unreadCount}
-              </span>
-            )}
           </div>
           <div className="flex-1 min-w-0">
             <h2 className="text-sm font-semibold text-white truncate">
@@ -607,8 +612,6 @@ const ChatWindow = () => {
                   onClick={() => {
                     alert("Chat Cleared");
                     setChatMessages([]);
-                    const chatKey = `chat_${[user.id, userDetails.id].sort().join("_")}`;
-                    localStorage.removeItem(chatKey);
                   }}
                 >
                   Clear Chat
@@ -629,7 +632,7 @@ const ChatWindow = () => {
         ) : (
           chatMessages.map((msg, index) => (
             <motion.div
-              key={index}
+              key={msg.id || index}
               variants={messageVariants}
               initial="hidden"
               animate="visible"
@@ -841,7 +844,7 @@ const ChatWindow = () => {
               transition={{ duration: 0.2 }}
               className="absolute bottom-16 left-2 w-40 bg-gray-700 rounded-lg shadow-lg z-20"
             >
-              <ul className="py-2">
+              <ul className="py-2 text-white">
                 <li
                   className="px-3 py-2 hover:bg-gray-600 cursor-pointer flex items-center text-sm"
                   onClick={() => openFileInput(documentInputRef)}
@@ -996,8 +999,6 @@ const ChatWindow = () => {
                         action: () => {
                           alert("Chat Deleted!");
                           setChatMessages([]);
-                          const chatKey = `chat_${[user.id, userDetails.id].sort().join("_")}`;
-                          localStorage.removeItem(chatKey);
                         },
                       },
                     ].map((button, index) => (
@@ -1023,3 +1024,4 @@ const ChatWindow = () => {
 };
 
 export default ChatWindow;
+
