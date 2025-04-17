@@ -5,16 +5,21 @@ import ContactList from '../components/ContactList';
 import { FaUser, FaComments, FaAddressBook } from 'react-icons/fa';
 
 const ChatPage = () => {
-  const [activeTab, setActiveTab] = useState('chat');
+  const [activeTab, setActiveTab] = useState('contacts');
+
+  // Callback to switch to chat tab when a contact is selected
+  const handleContactSelect = () => {
+    setActiveTab('chat');
+  };
 
   return (
-    <div className="flex justify-center items-center min-h-screen w-screen bg-gray-100 p-2 sm:p-4">
-      <div className="flex flex-col md:flex-row h-[90vh] w-full max-w-[80vw] rounded-lg shadow-lg overflow-hidden">
+    <div className="min-h-screen w-full bg-gray-100">
+      <div className="flex flex-col md:flex-row h-screen w-full bg-white">
         {/* Mobile Navigation */}
-        <div className="md:hidden flex justify-around bg-gray-800 text-white p-2">
+        <div className="md:hidden flex justify-around bg-gray-800 text-white p-2 sticky top-0 z-10">
           <button
             onClick={() => setActiveTab('contacts')}
-            className={`flex-1 p-2 text-center rounded-lg ${
+            className={`flex-1 p-2 text-center rounded-lg text-sm sm:text-base ${
               activeTab === 'contacts' ? 'bg-gray-600' : 'hover:bg-gray-700'
             }`}
             aria-label="Show Contacts"
@@ -23,7 +28,7 @@ const ChatPage = () => {
           </button>
           <button
             onClick={() => setActiveTab('chat')}
-            className={`flex-1 p-2 text-center rounded-lg ${
+            className={`flex-1 p-2 text-center rounded-lg text-sm sm:text-base ${
               activeTab === 'chat' ? 'bg-gray-600' : 'hover:bg-gray-700'
             }`}
             aria-label="Show Chat"
@@ -32,7 +37,7 @@ const ChatPage = () => {
           </button>
           <button
             onClick={() => setActiveTab('profile')}
-            className={`flex-1 p-2 text-center rounded-lg ${
+            className={`flex-1 p-2 text-center rounded-lg text-sm sm:text-base ${
               activeTab === 'profile' ? 'bg-gray-600' : 'hover:bg-gray-700'
             }`}
             aria-label="Show Profile"
@@ -47,16 +52,16 @@ const ChatPage = () => {
           <div
             className={`${
               activeTab === 'contacts' ? 'block' : 'hidden'
-            } md:block w-full md:w-1/4 h-[30vh] md:h-full bg-white border-r border-gray-200 overflow-y-auto`}
+            } md:block w-full md:w-1/4 h-full bg-white border-gray-200 overflow-y-auto`}
           >
-            <ContactList />
+            <ContactList onContactSelect={handleContactSelect} />
           </div>
 
           {/* ChatWindow */}
           <div
             className={`${
               activeTab === 'chat' ? 'block' : 'hidden'
-            } md:block w-full md:w-1/2 lg:w-2/3 h-[40vh] md:h-full bg-gray-50 overflow-y-auto`}
+            } md:block w-full md:w-1/2 lg:w-2/3 h-full bg-gray-50 overflow-y-auto`}
           >
             <ChatWindow />
           </div>
@@ -65,7 +70,7 @@ const ChatPage = () => {
           <div
             className={`${
               activeTab === 'profile' ? 'block' : 'hidden'
-            } md:block w-full md:w-1/4 h-[30vh] md:h-full bg-white border-l border-gray-200 overflow-y-auto`}
+            } md:block w-full md:w-1/4 h-full bg-white border-gray-200 overflow-y-auto`}
           >
             <Profile />
           </div>

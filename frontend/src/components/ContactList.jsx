@@ -69,9 +69,9 @@ const ContactList = () => {
         <div className="flex items-center space-x-4 min-w-0">
           <img
             src={
-              // user?.avatar === null
-                 "https://i.pinimg.com/236x/00/80/ee/0080eeaeaa2f2fba77af3e1efeade565.jpg"
-                // : user?.avatar
+              user?.avatar === null
+              ? "https://i.pinimg.com/236x/00/80/ee/0080eeaeaa2f2fba77af3e1efeade565.jpg"
+                : user?.avatar
             }
             alt={user?.username}
             className={`w-8 h-8 rounded-full ${

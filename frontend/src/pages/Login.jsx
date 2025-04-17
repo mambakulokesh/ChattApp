@@ -44,8 +44,6 @@ const Login = () => {
       );
 
       const loggedInData = loginResponse.data.data;
-
-      // console.log(loggedInData)
       
       login({ ...loggedInData });
       triggerAlert('success', 'Success', 'Login Successful');
@@ -63,9 +61,29 @@ const Login = () => {
   const onSignupSubmit = async (data) => {
     setSignupLoading(true);
     try {
+      let avatarBase64 = '';
+      if (data.avatar[0]) {
+        avatarBase64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const base64String = reader.result.split(",")[1];
+            resolve(base64String);
+          };
+          reader.onerror = () => reject(new Error('Failed to read file'));
+          reader.readAsDataURL(data.avatar[0]);
+        });
+      }
+
+      const payload = {
+        username: data.username,
+        email: data.email,
+        password: data.password,
+        avatar: avatarBase64 || null, // Send null if no avatar is provided
+      };
+
       await axios.post(
         'http://38.77.155.139:8000/user/register/',
-        { username: data.username, email: data.email, password: data.password },
+        payload,
         { headers: { 'Content-Type': 'application/json' } }
       );
       triggerAlert('success', 'Success', 'Registered Successfully');
@@ -108,7 +126,7 @@ const Login = () => {
             className={`flex-1 py-3 text-center text-lg font-semibold transition-colors duration-300 ${
               activeTab === 'signup' ? 'text-white border-b-2 border-blue-500' : 'text-gray-400 hover:text-white'
             }`}
-            onClick={() => setActiveTab(',signup')}
+            onClick={() => setActiveTab('signup')}
             aria-label="Signup Tab"
           >
             Register
@@ -213,6 +231,7 @@ const Login = () => {
               onSubmit={handleSignupSubmit(onSignupSubmit)}
               className="space-y-6"
               aria-labelledby="signup-heading"
+              encType="multipart/form-data"
             >
               <h2 id="signup-heading" className="sr-only">
                 Signup Form
@@ -271,6 +290,39 @@ const Login = () => {
                 {signupErrors.password && (
                   <p className="text-red-400 text-sm mt-1" role="alert">
                     {signupErrors.password.message}
+                  </p>
+                )}
+              </div>
+              <div>
+                <label htmlFor="signup-avatar" className="block text-sm font-medium text-gray-300 mb-1">
+                  Profile Picture
+                </label>
+                <input
+                  id="signup-avatar"
+                  type="file"
+                  accept="image/*"
+                  {...registerSignup('avatar', {
+                    validate: (files) => {
+                      if (files.length > 0) {
+                        const file = files[0];
+                        const validTypes = ['image/jpeg', 'image/png', 'image/gif'];
+                        if (!validTypes.includes(file.type)) {
+                          return 'Only JPEG, PNG, or GIF images are allowed';
+                        }
+                        if (file.size > 5 * 1024 * 1024) {
+                          return 'Image size must be less than 5MB';
+                        }
+                      }
+                      return true;
+                    },
+                  })}
+                  className="w-full p-3 bg-gray-700/50 text-white rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                  disabled={signupLoading}
+                  aria-invalid={signupErrors.avatar ? 'true' : 'false'}
+                />
+                {signupErrors.avatar && (
+                  <p className="text-red-400 text-sm mt-1" role="alert">
+                    {signupErrors.avatar.message}
                   </p>
                 )}
               </div>

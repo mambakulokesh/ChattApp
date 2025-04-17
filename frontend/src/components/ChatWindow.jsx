@@ -23,7 +23,9 @@ import Picker from "emoji-picker-react";
 import { motion, AnimatePresence } from "framer-motion";
 import mammoth from "mammoth";
 import axios from "axios";
+
 import { socket } from "../utils/commonFunctions/SocketConnection";
+import { fileToBase64 } from "../utils/commonFunctions/ConvertToBase64";
 
 const ChatWindow = () => {
   const { user, userDetails } = useContext(AuthContext);
@@ -42,74 +44,67 @@ const ChatWindow = () => {
   const [recordingTime, setRecordingTime] = useState(0);
   const [mediaRecorder, setMediaRecorder] = useState(null);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+
   const audioChunksRef = useRef([]);
   const messagesEndRef = useRef(null);
-
   const documentInputRef = useRef(null);
   const photoInputRef = useRef(null);
   const videoInputRef = useRef(null);
   const audioInputRef = useRef(null);
   const contactInputRef = useRef(null);
 
-  // Initialize socket connection on mount
   useEffect(() => {
     if (user && user.token) {
       console.log("Initiating socket connection...");
       socket.connect();
     }
-
     return () => {
       socket.disconnect();
     };
   }, [user]);
 
-  // Fetch messages from API when user or userDetails changes
-  const fetchMessages = async () => {
+  useEffect(() => {
     if (user && userDetails && user.token && userDetails.id) {
-      try {
-        console.log("Fetching messages for user:", userDetails.id);
-        const response = await axios.get(
-          `http://38.77.155.139:8000/messaging/get-message/?sender_id=${user.id}&receiver_id=${userDetails.id}`,
-          {
-            headers: {
-              Authorization: `Bearer ${user.token}`,
-            },
-          }
-        );
+      const fetchMessages = async () => {
+        try {
+          console.log("Fetching messages for user:", userDetails.id);
+          const response = await axios.get(
+            `http://38.77.155.139:8000/messaging/get-message/?sender_id=${user.id}&receiver_id=${userDetails.id}`,
+            {
+              headers: {
+                Authorization: `Bearer ${user.token}`,
+              },
+            }
+          );
 
-        const messages = response.data.map((msg) => ({
-          id: msg.id,
-          text: msg.content || "",
-          files: [], // No files in provided data
-          sender: msg.sender === user.id ? "self" : "other",
-          time: new Date(msg.timestamp).toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-          }),
-        }));
+          const messages = response.data.map((msg) => ({
+            id: msg.id,
+            text: msg.content || "",
+            files: [],
+            sender: msg.sender === user.id ? "self" : "other",
+            time: new Date(msg.timestamp).toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+          }));
 
-        // Clear previous messages and set new ones for the selected user
-        setChatMessages(messages);
-      } catch (error) {
-        console.error("Error fetching messages:", error);
-        setChatMessages([]);
-      }
+          setChatMessages(messages);
+        } catch (error) {
+          console.error("Error fetching messages:", error);
+          setChatMessages([]);
+        }
+      };
+
+      fetchMessages();
     } else {
-      // Clear messages if no user is selected
       setChatMessages([]);
     }
-  };
-
-  useEffect(() => {
-    fetchMessages();
   }, [user, userDetails]);
 
-  // Socket.io setup and fetch messages after auth_success
   useEffect(() => {
     if (!user || !user.token) return;
 
     console.log("Setting up Socket.IO listeners...");
-
     socket.on("connect", () => {
       console.log("Connected to Socket.IO server with ID:", socket.id);
       socket.emit("authenticate", { token: user.token });
@@ -117,10 +112,6 @@ const ChatWindow = () => {
 
     socket.on("auth_success", (data) => {
       console.log("Authentication successful:", data);
-      // Fetch messages if a user is already selected
-      if (userDetails && userDetails.id) {
-        fetchMessages();
-      }
     });
 
     socket.on("auth_error", (error) => {
@@ -131,35 +122,24 @@ const ChatWindow = () => {
 
     socket.on("new_message", (messageData) => {
       console.log("Received new_message:", messageData);
-
-      // Check if the message is relevant to the current chat
       const isRelevantMessage =
-        (messageData.receiver === user.id &&
-          messageData.sender === userDetails.id) ||
-        (messageData.sender === user.id &&
-          messageData.receiver === userDetails.id);
+        (messageData.receiver_id === user.id &&
+          messageData.sender_id === userDetails.id) ||
+        (messageData.sender_id === user.id &&
+          messageData.receiver_id === userDetails.id);
 
       if (isRelevantMessage) {
         const newMessage = {
           id: messageData.id,
           text: messageData.content || "",
-          files: [], // No files in provided data
+          files: [],
           sender: messageData.sender === user.id ? "self" : "other",
           time: new Date(messageData.timestamp).toLocaleTimeString([], {
             hour: "2-digit",
             minute: "2-digit",
           }),
         };
-
-        // Add new message, avoiding duplicates
-        setChatMessages((prevMessages) => {
-          if (prevMessages.some((msg) => msg.id === newMessage.id)) {
-            return prevMessages; // Skip if message already exists
-          }
-          return [...prevMessages, newMessage];
-        });
-      } else {
-        console.log("Message ignored: Not relevant to current chat");
+        setChatMessages((prevMessages) => [...prevMessages, newMessage]);
       }
     });
 
@@ -169,12 +149,10 @@ const ChatWindow = () => {
 
     socket.on("error", (error) => {
       console.error("Socket.IO error:", error);
-      alert(`Socket.IO error: ${error.message || JSON.stringify(error)}`);
     });
 
     socket.on("connect_error", (error) => {
       console.error("Socket.IO connection error:", error);
-      alert(`Connection failed: ${error.message || JSON.stringify(error)}`);
     });
 
     socket.on("disconnect", (reason) => {
@@ -193,7 +171,6 @@ const ChatWindow = () => {
     };
   }, [user, userDetails]);
 
-  // File reading for documents
   useEffect(() => {
     const readFiles = async () => {
       const textFiles = selectedFiles.filter(
@@ -225,7 +202,6 @@ const ChatWindow = () => {
     }
   }, [chatMessages]);
 
-  // Recording timer
   useEffect(() => {
     let interval;
     if (isRecording) {
@@ -280,7 +256,6 @@ const ChatWindow = () => {
 
   const startRecording = async () => {
     if (isUserBlocked || isRecording) return;
-
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const recorder = new MediaRecorder(stream);
@@ -331,19 +306,6 @@ const ChatWindow = () => {
     }
   };
 
-  // Convert file to base64
-  const fileToBase64 = (file) => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const base64String = reader.result.split(",")[1];
-        resolve(base64String);
-      };
-      reader.onerror = (error) => reject(error);
-      reader.readAsDataURL(file);
-    });
-  };
-
   const handleSend = async () => {
     if (!isUserBlocked && (message.trim() || selectedFiles.length > 0)) {
       let fileData = [];
@@ -353,7 +315,7 @@ const ChatWindow = () => {
             selectedFiles.map(async (file) => ({
               name: file.name,
               type: file.type,
-              base64: await fileToBase64(file),
+              base64: await fileToBase64(file) || "",
             }))
           );
         } catch (error) {
@@ -364,27 +326,22 @@ const ChatWindow = () => {
       }
 
       const messageData = {
-        sender: user.id,
-        receiver: userDetails.id,
+        sender_id: user.id,
+        receiver_id: userDetails.id,
         content: message.trim(),
-        files: fileData,
+        // files: fileData,
+        file: fileData[0].base64 || "",
+        file_type: fileData[0].type,
+        file_name: fileData[0].name,
         timestamp: new Date().toISOString(),
       };
 
       console.log("Sending private_message:", messageData);
-      socket.emit("private_message", messageData, (response) => {
-        if (response && response.error) {
-          console.error("Error sending message:", response.error);
-          alert("Failed to send message.");
-        } else {
-          console.log("Message sent successfully:", response);
-          // Fetch messages instantly after sending
-          fetchMessages();
-        }
-      });
+      
+      socket.emit("private_message", messageData);
 
       const newMessage = {
-        id: Date.now(), // Temporary ID until server responds
+        id: Date.now(),
         text: message.trim(),
         files: selectedFiles.map((file, index) => ({
           name: file.name,
@@ -399,7 +356,6 @@ const ChatWindow = () => {
       };
 
       setChatMessages((prevMessages) => [...prevMessages, newMessage]);
-
       setMessage("");
       setSelectedFiles([]);
     }
@@ -427,7 +383,7 @@ const ChatWindow = () => {
             className={
               isPreviewModal
                 ? "max-w-full max-h-[80vh] object-contain"
-                : "max-w-[300px] max-h-[150px] rounded-lg object-cover"
+                : "max-w-[150px] sm:max-w-[200px] max-h-[100px] sm:max-h-[150px] rounded-lg object-cover"
             }
           />
         );
@@ -439,7 +395,7 @@ const ChatWindow = () => {
             className={
               isPreviewModal
                 ? "max-w-[80vw] max-h-[80vh] w-auto h-auto"
-                : "max-w-[300px] max-h-[150px] rounded-lg"
+                : "max-w-[150px] sm:max-w-[200px] max-h-[100px] sm:max-h-[150px] rounded-lg"
             }
           />
         );
@@ -448,7 +404,7 @@ const ChatWindow = () => {
           <audio
             src={fileUrl}
             controls
-            className={isPreviewModal ? "w-[250px]" : "max-w-[250px]"}
+            className={isPreviewModal ? "w-[200px] sm:w-[250px]" : "max-w-[200px] sm:max-w-[250px]"}
           />
         );
       case "application":
@@ -542,10 +498,12 @@ const ChatWindow = () => {
   if (isuserEmpty) {
     return (
       <div className="flex flex-col h-full w-full bg-gray-900 justify-center items-center">
-        <h2 className="text-white text-lg font-semibold">
+        <h2 className="text-white text-base sm:text-lg font-semibold">
           Start Your Conversation
         </h2>
-        <p className="text-gray-400 mt-2">Select a user to begin chatting.</p>
+        <p className="text-gray-400 mt-2 text-sm sm:text-base">
+          Select a user to begin chatting.
+        </p>
       </div>
     );
   }
@@ -553,7 +511,7 @@ const ChatWindow = () => {
   return (
     <div className="flex flex-col h-full w-full bg-gray-900">
       {/* Header */}
-      <div className="flex items-center p-3 bg-gray-800 border-b border-gray-700 shrink-0">
+      <div className="flex items-center p-2 sm:p-3 bg-gray-800 border-b border-gray-700 shrink-0">
         <div
           onClick={openProfileModal}
           className="cursor-pointer flex items-center flex-1 min-w-0"
@@ -566,11 +524,11 @@ const ChatWindow = () => {
                   : userDetails?.avatar
               }
               alt="User Avatar"
-              className="w-8 h-8 rounded-full mr-2"
+              className="w-6 h-6 sm:w-8 sm:h-8 rounded-full mr-2"
             />
           </div>
           <div className="flex-1 min-w-0">
-            <h2 className="text-sm font-semibold text-white truncate">
+            <h2 className="text-xs sm:text-sm font-semibold text-white truncate">
               {userDetails?.username || "User"}
             </h2>
             <p className="text-xs text-gray-400 truncate">
@@ -578,18 +536,18 @@ const ChatWindow = () => {
             </p>
           </div>
         </div>
-        <div className="flex space-x-3 relative">
+        <div className="flex space-x-2 sm:space-x-3 relative">
           <button className="text-gray-400 hover:text-white">
-            <FaPhone className="w-4 h-4" />
+            <FaPhone className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
           <button className="text-gray-400 hover:text-white">
-            <FaVideo className="w-4 h-4" />
+            <FaVideo className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
           <button
             className="text-gray-400 hover:text-white"
             onClick={toggleMenu}
           >
-            <HiDotsVertical className="w-4 h-4" />
+            <HiDotsVertical className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
           <AnimatePresence>
             {showMenu && (
@@ -599,16 +557,16 @@ const ChatWindow = () => {
                 exit="exit"
                 variants={dropdownVariants}
                 transition={{ duration: 0.2 }}
-                className="absolute top-8 right-0 mt-2 w-36 bg-gray-700 text-white rounded shadow-lg z-20"
+                className="absolute top-8 right-0 mt-2 w-32 sm:w-36 bg-gray-700 text-white rounded shadow-lg z-20"
               >
                 <button
-                  className="block px-3 py-2 text-sm hover:bg-gray-600 w-full text-left"
+                  className="block px-2 sm:px-3 py-1 sm:py-2 text-xs sm:text-sm hover:bg-gray-600 w-full text-left"
                   onClick={handleBlockUser}
                 >
                   {isUserBlocked ? "Unblock User" : "Block User"}
                 </button>
                 <button
-                  className="block px-3 py-2 text-sm hover:bg-gray-600 w-full text-left"
+                  className="block px-2 sm:px-3 py-1 sm:py-2 text-xs sm:text-sm hover:bg-gray-600 w-full text-left"
                   onClick={() => {
                     alert("Chat Cleared");
                     setChatMessages([]);
@@ -623,11 +581,11 @@ const ChatWindow = () => {
       </div>
 
       {/* Chat Messages Area */}
-      <div className="flex-1 p-3 overflow-y-auto">
+      <div className="flex-1 p-2 sm:p-3 overflow-y-auto">
         {chatMessages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-gray-400">
-            <p>No messages yet.</p>
-            <p>Start the conversation!</p>
+            <p className="text-xs sm:text-sm">No messages yet.</p>
+            <p className="text-xs sm:text-sm">Start the conversation!</p>
           </div>
         ) : (
           chatMessages.map((msg, index) => (
@@ -638,7 +596,7 @@ const ChatWindow = () => {
               animate="visible"
               className={`flex ${
                 msg.sender === "self" ? "justify-end" : "items-start"
-              } mb-3`}
+              } mb-2 sm:mb-3`}
             >
               {msg.sender === "other" && (
                 <img
@@ -648,13 +606,13 @@ const ChatWindow = () => {
                       : userDetails?.avatar
                   }
                   alt="User Avatar"
-                  className="w-6 h-6 rounded-full mr-2 flex-shrink-0"
+                  className="w-5 h-5 sm:w-6 sm:h-6 rounded-full mr-1 sm:mr-2 flex-shrink-0"
                 />
               )}
               <div className="max-w-[80%]">
                 {msg.text && (
                   <div
-                    className={`p-2 rounded-lg text-sm ${
+                    className={`p-1 sm:p-2 rounded-lg text-xs sm:text-sm ${
                       msg.sender === "self"
                         ? "bg-blue-600 text-white"
                         : "bg-gray-700 text-white"
@@ -663,12 +621,13 @@ const ChatWindow = () => {
                     {msg.text}
                   </div>
                 )}
+              
                 {msg.files && msg.files.length > 0 && (
-                  <div className="mt-2 flex flex-col gap-1">
+                  <div className="mt-1 sm:mt-2 flex flex-col gap-1">
                     {msg.files.map((file, fileIndex) => (
                       <div
                         key={fileIndex}
-                        className={`p-2 rounded-lg cursor-pointer ${
+                        className={`p-1 sm:p-2 rounded-lg cursor-pointer ${
                           msg.sender === "self"
                             ? "bg-blue-600 text-white"
                             : "bg-gray-700 text-white"
@@ -695,21 +654,21 @@ const ChatWindow = () => {
       </div>
 
       {/* Input Area */}
-      <div className="relative p-3 bg-gray-800 border-t border-gray-700 shrink-0">
-        <div className="flex flex-wrap gap-2 items-center">
-          <div className="flex items-center gap-2">
+      <div className="relative p-2 sm:p-3 bg-gray-800 border-t border-gray-700 shrink-0">
+        <div className="flex flex-wrap gap-1 sm:gap-2 items-center">
+          <div className="flex items-center gap-1 sm:gap-2">
             <button
               className="text-gray-400 hover:text-white"
               onClick={togglePinDropdown}
               disabled={isUserBlocked}
             >
-              <FaMapPin className="w-4 h-4" />
+              <FaMapPin className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
             <button
               disabled={isUserBlocked}
               className="text-gray-400 hover:text-white"
             >
-              <FaCamera className="w-4 h-4" />
+              <FaCamera className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
             <button
               onClick={handleMicClick}
@@ -718,7 +677,7 @@ const ChatWindow = () => {
                 isRecording ? "text-red-500" : ""
               }`}
             >
-              <FaMicrophone className="w-4 h-4" />
+              <FaMicrophone className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
             {isRecording && (
               <span className="text-white text-xs">
@@ -729,21 +688,21 @@ const ChatWindow = () => {
           </div>
 
           <div
-            className={`flex-1 min-w-0 bg-gray-700 p-2 rounded-lg text-white text-sm flex flex-col gap-2 ${
+            className={`flex-1 min-w-0 bg-gray-700 p-1 sm:p-2 rounded-lg text-white text-xs sm:text-sm flex flex-col gap-1 sm:gap-2 ${
               isUserBlocked ? "cursor-not-allowed opacity-50" : ""
             }`}
           >
             {selectedFiles.length > 0 && (
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-1 sm:gap-2">
                 {selectedFiles.map((file, index) => (
                   <div
                     key={index}
-                    className="flex items-center bg-gray-600 text-white px-2 py-1 rounded truncate max-w-[120px] text-xs"
+                    className="flex items-center bg-gray-600 text-white px-1 sm:px-2 py-0.5 sm:py-1 rounded truncate max-w-[100px] sm:max-w-[120px] text-xs"
                   >
                     <span className="truncate">{file.name}</span>
                     <button
                       onClick={() => removeFile(index)}
-                      className="ml-2 text-red-400 hover:text-red-600"
+                      className="ml-1 sm:ml-2 text-red-400 hover:text-red-600"
                       disabled={isUserBlocked}
                     >
                       ×
@@ -761,27 +720,27 @@ const ChatWindow = () => {
                   ? "Add a message (optional)"
                   : "Type a message"
               }
-              className="flex-1 bg-transparent outline-none text-white placeholder-gray-400 w-full text-sm"
+              className="flex-1 bg-transparent outline-none text-white placeholder-gray-400 w-full text-xs sm:text-sm"
               value={message}
               onChange={(e) => !isUserBlocked && setMessage(e.target.value)}
               disabled={isUserBlocked}
             />
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 sm:gap-2">
             <button
               className="text-gray-400 hover:text-white"
               onClick={toggleEmojiPicker}
               disabled={isUserBlocked}
             >
-              <FaSmile className="w-4 h-4" />
+              <FaSmile className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
             <button
               onClick={handleSend}
               disabled={
                 isUserBlocked || (!message.trim() && selectedFiles.length === 0)
               }
-              className={`px-3 py-2 rounded-lg text-sm text-white ${
+              className={`px-2 sm:px-3 py-1 sm:py-2 rounded-lg text-xs sm:text-sm text-white ${
                 isUserBlocked || (!message.trim() && selectedFiles.length === 0)
                   ? "bg-blue-600 opacity-50 cursor-not-allowed"
                   : "bg-blue-600 hover:bg-blue-700"
@@ -842,35 +801,35 @@ const ChatWindow = () => {
               exit="exit"
               variants={dropdownVariants}
               transition={{ duration: 0.2 }}
-              className="absolute bottom-16 left-2 w-40 bg-gray-700 rounded-lg shadow-lg z-20"
+              className="absolute bottom-14 sm:bottom-16 left-2 w-36 sm:w-40 bg-gray-700 rounded-lg shadow-lg z-20"
             >
-              <ul className="py-2 text-white">
+              <ul className="py-1 sm:py-2 text-white">
                 <li
-                  className="px-3 py-2 hover:bg-gray-600 cursor-pointer flex items-center text-sm"
+                  className="px-2 sm:px-3 py-1 sm:py-2 hover:bg-gray-600 cursor-pointer flex items-center text-xs sm:text-sm"
                   onClick={() => openFileInput(documentInputRef)}
                 >
                   <MdInsertDriveFile className="mr-2 text-gray-400" /> Documents
                 </li>
                 <li
-                  className="px-3 py-2 hover:bg-gray-600 cursor-pointer flex items-center text-sm"
+                  className="px-2 sm:px-3 py-1 sm:py-2 hover:bg-gray-600 cursor-pointer flex items-center text-xs sm:text-sm"
                   onClick={() => openFileInput(photoInputRef)}
                 >
                   <MdPhoto className="mr-2 text-gray-400" /> Photos
                 </li>
                 <li
-                  className="px-3 py-2 hover:bg-gray-600 cursor-pointer flex items-center text-sm"
+                  className="px-2 sm:px-3 py-1 sm:py-2 hover:bg-gray-600 cursor-pointer flex items-center text-xs sm:text-sm"
                   onClick={() => openFileInput(videoInputRef)}
                 >
                   <MdVideoCall className="mr-2 text-gray-400" /> Video
                 </li>
                 <li
-                  className="px-3 py-2 hover:bg-gray-600 cursor-pointer flex items-center text-sm"
+                  className="px-2 sm:px-3 py-1 sm:py-2 hover:bg-gray-600 cursor-pointer flex items-center text-xs sm:text-sm"
                   onClick={() => openFileInput(audioInputRef)}
                 >
                   <MdAudiotrack className="mr-2 text-gray-400" /> Audio
                 </li>
                 <li
-                  className="px-3 py-2 hover:bg-gray-600 cursor-pointer flex items-center text-sm"
+                  className="px-2 sm:px-3 py-1 sm:py-2 hover:bg-gray-600 cursor-pointer flex items-center text-xs sm:text-sm"
                   onClick={() => openFileInput(contactInputRef)}
                 >
                   <MdPerson className="mr-2 text-gray-400" /> Contact
@@ -887,13 +846,13 @@ const ChatWindow = () => {
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
               transition={{ duration: 0.15 }}
-              className="absolute bottom-16 left-2 right-2 bg-gray-700 rounded-lg shadow-lg z-20"
+              className="absolute bottom-14 sm:bottom-16 left-2 right-2 bg-gray-700 rounded-lg shadow-lg z-20"
             >
               <Picker
                 onEmojiClick={onEmojiClick}
                 theme="dark"
                 emojiStyle="apple"
-                height={250}
+                height={200}
                 width="100%"
                 previewConfig={{ showPreview: false }}
                 searchDisabled
@@ -915,11 +874,11 @@ const ChatWindow = () => {
               onClick={closePreview}
             >
               <div
-                className="relative bg-gray-800 p-4 rounded-lg max-w-[80vw] max-h-[80vh] overflow-auto"
+                className="relative bg-gray-800 p-2 sm:p-4 rounded-lg max-w-[90vw] sm:max-w-[80vw] max-h-[90vh] sm:max-h-[80vh] overflow-auto"
                 onClick={(e) => e.stopPropagation()}
               >
                 <button
-                  className="absolute top-2 right-2 text-xl text-white hover:text-gray-400"
+                  className="absolute top-2 right-2 text-lg sm:text-xl text-white hover:text-gray-400"
                   onClick={closePreview}
                 >
                   ×
@@ -944,17 +903,17 @@ const ChatWindow = () => {
               onClick={closeProfileModal}
             >
               <div
-                className="relative bg-gray-800 p-4 rounded-lg w-[24rem] max-w-[80vw] max-h-[80vh] overflow-auto"
+                className="relative bg-gray-800 p-2 sm:p-4 rounded-lg w-[20rem] sm:w-[24rem] max-w-[90vw] max-h-[90vh] sm:max-h-[80vh] overflow-auto"
                 onClick={(e) => e.stopPropagation()}
               >
                 <button
-                  className="absolute top-2 right-2 text-xl text-white hover:text-gray-400"
+                  className="absolute top-2 right-2 text-lg sm:text-xl text-white hover:text-gray-400"
                   onClick={closeProfileModal}
                   aria-label="Close Profile"
                 >
                   ×
                 </button>
-                <div className="flex flex-col items-center w-full p-6">
+                <div className="flex flex-col items-center w-full p-4 sm:p-6">
                   <img
                     src={
                       userDetails?.avatar === null
@@ -962,19 +921,19 @@ const ChatWindow = () => {
                         : userDetails?.avatar
                     }
                     alt="User Avatar"
-                    className={`w-[7rem] h-[7rem] rounded-full ${
+                    className={`w-[5rem] sm:w-[7rem] h-[5rem] sm:h-[7rem] rounded-full ${
                       userDetails?.is_active
-                        ? "ring-4 ring-green-500"
-                        : "ring-4 ring-gray-700"
+                        ? "ring-2 sm:ring-4 ring-green-500"
+                        : "ring-2 sm:ring-4 ring-gray-700"
                     }`}
                   />
-                  <h2 className="text-lg mt-3 font-semibold text-white">
+                  <h2 className="text-base sm:text-lg mt-2 sm:mt-3 font-semibold text-white">
                     {userDetails?.username}
                   </h2>
-                  <p className="text-gray-400 mb-4">
+                  <p className="text-gray-400 mb-2 sm:mb-4 text-xs sm:text-sm">
                     {userDetails?.is_active ? "online" : "offline"}
                   </p>
-                  <div className="w-full mt-4 space-y-4 text-left py-4 px-2 flex flex-col">
+                  <div className="w-full mt-2 sm:mt-4 space-y-2 sm:space-y-4 text-left py-2 sm:py-4 px-1 sm:px-2 flex flex-col">
                     {[
                       {
                         label: "Add to Favorites",
@@ -1004,7 +963,7 @@ const ChatWindow = () => {
                     ].map((button, index) => (
                       <button
                         key={index}
-                        className="flex items-center px-3 py-2 bg-transparent text-white rounded-lg hover:bg-gray-700 text-sm"
+                        className="flex items-center px-2 sm:px-3 py-1 sm:py-2 bg-transparent text-white rounded-lg hover:bg-gray-700 text-xs sm:text-sm"
                         onClick={button.action}
                         aria-label={button.label}
                       >
@@ -1024,4 +983,3 @@ const ChatWindow = () => {
 };
 
 export default ChatWindow;
-

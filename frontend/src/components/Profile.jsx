@@ -70,9 +70,9 @@ const Profile = () => {
         <div className="relative">
           <motion.img
             src={
-              // user?.avatar === null
-              "https://i.pinimg.com/236x/00/80/ee/0080eeaeaa2f2fba77af3e1efeade565.jpg"
-              // : user?.avatar
+              user?.avatar === null
+              ? "https://i.pinimg.com/236x/00/80/ee/0080eeaeaa2f2fba77af3e1efeade565.jpg"
+              : user?.avatar
             }
             alt={user?.username || "User"}
             className={`w-[11rem] h-[11rem] rounded-full ${
@@ -100,7 +100,7 @@ const Profile = () => {
       </motion.div>
 
       {/* About */}
-      <div className="p-3 space-y-2 text-white flex-1">
+      <div className="p-3 space-y-2 text-white">
         <h3 className="text-xs font-semibold text-gray-400 mb-2">About</h3>
         <motion.p
           className="text-sm text-white whitespace-pre-wrap break-words p-3"
