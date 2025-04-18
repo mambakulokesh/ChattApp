@@ -1,6 +1,7 @@
 import React, { useState, useContext, useEffect } from "react";
 import { BsCameraVideo, BsTelephone } from "react-icons/bs";
 import { AiOutlineSearch } from "react-icons/ai";
+import { FaTrash } from "react-icons/fa"; // Import trash icon for delete
 import { AuthContext } from "../utils/AuthProvider";
 import axios from "axios";
 
@@ -8,7 +9,6 @@ const ContactList = () => {
   const [search, setSearch] = useState("");
   const [contactList, setContactList] = useState([]);
   const [selectedContact, setSelectedContact] = useState(null);
-  const [showVideo, setShowVideo] = useState(false);
   const { user, getUserDetails } = useContext(AuthContext);
 
   const userList = JSON.parse(localStorage.getItem("user"));
@@ -51,11 +51,31 @@ const ContactList = () => {
     getUserDetails(contact);
   };
 
-  const startVideoCall = () => {
-    if (!selectedContact)
-      return alert("Please select a contact to start a video call.");
-    setShowVideo(true);
-    alert(`Starting video call with ${selectedContact.username}`);
+  // New delete function
+  const handleDeleteContact = async (contactId) => {
+    try {
+      await axios.delete(`http://38.77.155.139:8000/user/delete-user/`, {
+        data: { id: contactId }, 
+        headers: { "Content-Type": "application/json",
+          "Authorization" : `Bearer ${user.token}`},
+      });
+
+      // Update contact list by filtering out the deleted contact
+      setContactList((prevList) =>
+        prevList.filter((contact) => contact.id !== contactId)
+      );
+
+      // If the deleted contact was selected, clear the selection
+      if (selectedContact?.id === contactId) {
+        setSelectedContact(null);
+      }
+
+      alert("Contact deleted successfully!");
+      getUserDetails(null)
+    } catch (error) {
+      console.error("Error deleting contact:", error.message);
+      alert("Failed to delete contact. Please try again.");
+    }
   };
 
   const filteredContacts = contactList.filter((contact) =>
@@ -70,43 +90,22 @@ const ContactList = () => {
           <img
             src={
               user?.avatar === null
-              ? "https://i.pinimg.com/236x/00/80/ee/0080eeaeaa2f2fba77af3e1efeade565.jpg"
+                ? "https://i.pinimg.com/236x/00/80/ee/0080eeaeaa2f2fba77af3e1efeade565.jpg"
                 : user?.avatar
             }
             alt={user?.username}
             className={`w-8 h-8 rounded-full ${
-              user?.active_status ? "ring-4 ring-green-500" : "ring-4 ring-gray-700"
+              user?.active_status
+                ? "ring-4 ring-green-500"
+                : "ring-4 ring-gray-700"
             }`}
           />
           <div className="flex flex-col leading-tight min-w-0">
             <h3 className="text-md font-semibold truncate">
               {userList?.username}
             </h3>
-
-            <p className="text-xs text-gray-400">
-              {userList?.bio}
-            </p>
+            <p className="text-xs text-gray-400">{userList?.bio}</p>
           </div>
-        </div>
-        <div className="flex items-center space-x-4">
-          <button
-            className="text-gray-400 hover:text-white"
-            onClick={startVideoCall}
-            title="Start video call"
-          >
-            <BsCameraVideo className="w-4 h-4" />
-          </button>
-          <button
-            className="text-gray-400 hover:text-white"
-            title="Start audio call"
-            onClick={() =>
-              selectedContact
-                ? alert(`Calling ${selectedContact.username}`)
-                : alert("Please select a contact to call.")
-            }
-          >
-            <BsTelephone className="w-4 h-4" />
-          </button>
         </div>
       </div>
 
@@ -132,7 +131,11 @@ const ContactList = () => {
               key={contact.id}
               className={`flex items-center p-3 px-6 py-4 hover:bg-gray-800 cursor-pointer transition-all animate-slideIn ${
                 selectedContact?.id === contact.id ? "bg-gray-700" : ""
-              } ${index !== filteredContacts.length - 1 ? "border-b border-gray-700" : ""}`}
+              } ${
+                index !== filteredContacts.length - 1
+                  ? "border-b border-gray-700"
+                  : ""
+              }`}
               style={{ animationDelay: `${index * 0.1}s` }}
               onClick={() => showUserDetails(contact)}
             >
@@ -144,15 +147,32 @@ const ContactList = () => {
                 }
                 alt={contact.username}
                 className={`w-8 h-8 rounded-full ${
-                  contact.is_active ? "ring-4 ring-green-500" : "ring-4 ring-gray-700"
+                  contact.is_active
+                    ? "ring-4 ring-green-500"
+                    : "ring-4 ring-gray-700"
                 }`}
               />
-              <div className="flex flex-col ml-3 leading-tight min-w-0">
+              <div className="flex flex-col ml-3 leading-tight min-w-0 flex-1">
                 <h3 className="text-md font-semibold truncate">
                   {contact.username}
                 </h3>
-                <p className="text-xs text-gray-400 truncate">{contact.status}</p>
+                <p className="text-xs text-gray-400 truncate">
+                  {contact.status}
+                </p>
               </div>
+              {/* Delete Button */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation(); // Prevent triggering showUserDetails
+                  if (window.confirm("Are you sure you want to delete this contact?")) {
+                    handleDeleteContact(contact.id);
+                  }
+                }}
+                className="ml-2 text-red-500 hover:text-red-700 transition-colors"
+                title="Delete Contact"
+              >
+                <FaTrash className="w-4 h-4" />
+              </button>
             </div>
           ))
         ) : (
@@ -163,15 +183,6 @@ const ContactList = () => {
           </p>
         )}
       </div>
-
-      {/* Video Call Preview */}
-      {showVideo && (
-        <video
-          autoPlay
-          muted
-          className="absolute bottom-2 left-2 w-24 h-16 rounded-lg border border-white shadow-lg z-10"
-        />
-      )}
     </div>
   );
 };

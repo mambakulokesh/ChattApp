@@ -34,7 +34,7 @@ const ChatWindow = () => {
   const [isPinDropdownOpen, setIsPinDropdownOpen] = useState(false);
   const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
   const [message, setMessage] = useState("");
-  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [selectedFile, setSelectedFile] = useState(null);
   const [showMenu, setShowMenu] = useState(false);
   const [isUserBlocked, setIsUserBlocked] = useState(false);
   const [chatMessages, setChatMessages] = useState([]);
@@ -80,7 +80,13 @@ const ChatWindow = () => {
           const messages = response.data.map((msg) => ({
             id: msg.id,
             text: msg.content || "",
-            files: [],
+            file: msg.file_url
+              ? {
+                  name: msg.file_name || "File",
+                  url: msg.file_url,
+                  type: msg.file_type || "application/octet-stream",
+                }
+              : null,
             sender: msg.sender === user.id ? "self" : "other",
             time: new Date(msg.timestamp).toLocaleTimeString([], {
               hour: "2-digit",
@@ -132,8 +138,14 @@ const ChatWindow = () => {
         const newMessage = {
           id: messageData.id,
           text: messageData.content || "",
-          files: [],
-          sender: messageData.sender === user.id ? "self" : "other",
+          file: messageData.file_url
+            ? {
+                name: messageData.file_name || "File",
+                url: messageData.file_url,
+                type: messageData.file_type || "application/octet-stream",
+              }
+            : null,
+          sender: messageData.sender_id === user.id ? "self" : "other",
           time: new Date(messageData.timestamp).toLocaleTimeString([], {
             hour: "2-digit",
             minute: "2-digit",
@@ -172,29 +184,23 @@ const ChatWindow = () => {
   }, [user, userDetails]);
 
   useEffect(() => {
-    const readFiles = async () => {
-      const textFiles = selectedFiles.filter(
-        (file) => file.type === "text/plain"
-      );
-      const docxFiles = selectedFiles.filter(
-        (file) =>
-          file.type ===
-          "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-      );
-
-      for (const file of textFiles) {
+    const readFile = async () => {
+      if (!selectedFile) return;
+      const file = selectedFile;
+      if (file.type === "text/plain") {
         const text = await file.text();
         setFileContents((prev) => ({ ...prev, [file.name]: text }));
-      }
-
-      for (const file of docxFiles) {
+      } else if (
+        file.type ===
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      ) {
         const arrayBuffer = await file.arrayBuffer();
         const result = await mammoth.convertToHtml({ arrayBuffer });
         setFileContents((prev) => ({ ...prev, [file.name]: result.value }));
       }
     };
-    readFiles();
-  }, [selectedFiles]);
+    readFile();
+  }, [selectedFile]);
 
   useEffect(() => {
     if (messagesEndRef.current) {
@@ -235,23 +241,24 @@ const ChatWindow = () => {
       alert("User Blocked!");
       setIsUserBlocked(true);
       setMessage("");
-      setSelectedFiles([]);
+      setSelectedFile(null);
     }
     setShowMenu(false);
   };
 
   const handleFileSelect = (type, event) => {
-    const files = Array.from(event.target.files);
-    if (files.length > 0) {
-      setSelectedFiles((prevFiles) => [...prevFiles, ...files]);
+    const file = event.target.files[0];
+    if (file) {
+      setSelectedFile(file);
     }
     setIsPinDropdownOpen(false);
+    event.target.value = null; // Reset input to allow re-selecting the same file
   };
 
   const openFileInput = (inputRef) => inputRef.current.click();
 
-  const removeFile = (index) => {
-    setSelectedFiles((prevFiles) => prevFiles.filter((_, i) => i !== index));
+  const removeFile = () => {
+    setSelectedFile(null);
   };
 
   const startRecording = async () => {
@@ -277,7 +284,7 @@ const ChatWindow = () => {
             type: "audio/webm",
           }
         );
-        setSelectedFiles((prevFiles) => [...prevFiles, audioFile]);
+        setSelectedFile(audioFile);
         stream.getTracks().forEach((track) => track.stop());
       };
 
@@ -307,20 +314,24 @@ const ChatWindow = () => {
   };
 
   const handleSend = async () => {
-    if (!isUserBlocked && (message.trim() || selectedFiles.length > 0)) {
-      let fileData = [];
-      if (selectedFiles.length > 0) {
+    if (!isUserBlocked && (message.trim() || selectedFile)) {
+      let fileData = {
+        file_type: null,
+        file_name: null,
+        file_url: null,
+      };
+
+      if (selectedFile) {
         try {
-          fileData = await Promise.all(
-            selectedFiles.map(async (file) => ({
-              name: file.name,
-              type: file.type,
-              base64: await fileToBase64(file) || "",
-            }))
-          );
+          const base64 = await fileToBase64(selectedFile);
+          fileData = {
+            file_type: selectedFile.type,
+            file_name: selectedFile.name,
+            file_url: base64, // In production, upload to server and use URL
+          };
         } catch (error) {
-          console.error("Error converting files to base64:", error);
-          alert("Failed to process files.");
+          console.error("Error converting file to base64:", error);
+          alert("Failed to process file.");
           return;
         }
       }
@@ -328,26 +339,27 @@ const ChatWindow = () => {
       const messageData = {
         sender_id: user.id,
         receiver_id: userDetails.id,
-        content: message.trim(),
-        // files: fileData,
-        file: fileData[0].base64 || "",
-        file_type: fileData[0].type,
-        file_name: fileData[0].name,
+        content: message.trim() || "",
+        file_type: fileData.file_type,
+        file_name: fileData.file_name,
+        file_url: fileData.file_url,
         timestamp: new Date().toISOString(),
       };
 
       console.log("Sending private_message:", messageData);
-      
+
       socket.emit("private_message", messageData);
 
       const newMessage = {
         id: Date.now(),
-        text: message.trim(),
-        files: selectedFiles.map((file, index) => ({
-          name: file.name,
-          url: URL.createObjectURL(file),
-          type: file.type,
-        })),
+        text: message.trim() || "",
+        file: selectedFile
+          ? {
+              name: selectedFile.name,
+              url: URL.createObjectURL(selectedFile),
+              type: selectedFile.type,
+            }
+          : null,
         sender: "self",
         time: new Date().toLocaleTimeString([], {
           hour: "2-digit",
@@ -357,28 +369,27 @@ const ChatWindow = () => {
 
       setChatMessages((prevMessages) => [...prevMessages, newMessage]);
       setMessage("");
-      setSelectedFiles([]);
+      setSelectedFile(null);
     }
   };
 
   const renderFilePreview = (file, isPreviewModal = false) => {
-    const fileType = file.type.split("/")[0];
-    const fileUrl = file.url;
-
-    if (!fileUrl) {
+    if (!file || !file.url) {
       return (
         <div className="flex items-center gap-2">
           <MdInsertDriveFile className="text-gray-400" />
-          <span>{file.name} (File not available)</span>
+          <span>{file?.name || "File"} (File not available)</span>
         </div>
       );
     }
+
+    const fileType = file.type.split("/")[0];
 
     switch (fileType) {
       case "image":
         return (
           <img
-            src={fileUrl}
+            src={file.url}
             alt={file.name}
             className={
               isPreviewModal
@@ -390,7 +401,7 @@ const ChatWindow = () => {
       case "video":
         return (
           <video
-            src={fileUrl}
+            src={file.url}
             controls
             className={
               isPreviewModal
@@ -402,16 +413,18 @@ const ChatWindow = () => {
       case "audio":
         return (
           <audio
-            src={fileUrl}
+            src={file.url}
             controls
-            className={isPreviewModal ? "w-[200px] sm:w-[250px]" : "max-w-[200px] sm:max-w-[250px]"}
+            className={
+              isPreviewModal ? "w-[200px] sm:w-[250px]" : "max-w-[200px] sm:max-w-[250px]"
+            }
           />
         );
       case "application":
         if (file.type === "application/pdf") {
           return isPreviewModal ? (
             <iframe
-              src={fileUrl}
+              src={file.url}
               title={file.name}
               className="w-[70vw] h-[70vh]"
             />
@@ -621,22 +634,16 @@ const ChatWindow = () => {
                     {msg.text}
                   </div>
                 )}
-              
-                {msg.files && msg.files.length > 0 && (
-                  <div className="mt-1 sm:mt-2 flex flex-col gap-1">
-                    {msg.files.map((file, fileIndex) => (
-                      <div
-                        key={fileIndex}
-                        className={`p-1 sm:p-2 rounded-lg cursor-pointer ${
-                          msg.sender === "self"
-                            ? "bg-blue-600 text-white"
-                            : "bg-gray-700 text-white"
-                        }`}
-                        onClick={() => handleFileClick(file)}
-                      >
-                        {renderFilePreview(file)}
-                      </div>
-                    ))}
+                {msg.file && (
+                  <div
+                    className={`mt-1 sm:mt-2 p-1 sm:p-2 rounded-lg cursor-pointer ${
+                      msg.sender === "self"
+                        ? "bg-blue-600 text-white"
+                        : "bg-gray-700 text-white"
+                    }`}
+                    onClick={() => handleFileClick(msg.file)}
+                  >
+                    {renderFilePreview(msg.file)}
                   </div>
                 )}
                 <p
@@ -692,23 +699,16 @@ const ChatWindow = () => {
               isUserBlocked ? "cursor-not-allowed opacity-50" : ""
             }`}
           >
-            {selectedFiles.length > 0 && (
-              <div className="flex flex-wrap gap-1 sm:gap-2">
-                {selectedFiles.map((file, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center bg-gray-600 text-white px-1 sm:px-2 py-0.5 sm:py-1 rounded truncate max-w-[100px] sm:max-w-[120px] text-xs"
-                  >
-                    <span className="truncate">{file.name}</span>
-                    <button
-                      onClick={() => removeFile(index)}
-                      className="ml-1 sm:ml-2 text-red-400 hover:text-red-600"
-                      disabled={isUserBlocked}
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
+            {selectedFile && (
+              <div className="flex items-center bg-gray-600 text-white px-1 sm:px-2 py-0.5 sm:py-1 rounded truncate max-w-[100px] sm:max-w-[120px] text-xs">
+                <span className="truncate">{selectedFile.name}</span>
+                <button
+                  onClick={removeFile}
+                  className="ml-1 sm:ml-2 text-red-400 hover:text-red-600"
+                  disabled={isUserBlocked}
+                >
+                  ×
+                </button>
               </div>
             )}
             <input
@@ -716,7 +716,7 @@ const ChatWindow = () => {
               placeholder={
                 isUserBlocked
                   ? "User is blocked"
-                  : selectedFiles.length > 0
+                  : selectedFile
                   ? "Add a message (optional)"
                   : "Type a message"
               }
@@ -724,6 +724,7 @@ const ChatWindow = () => {
               value={message}
               onChange={(e) => !isUserBlocked && setMessage(e.target.value)}
               disabled={isUserBlocked}
+              onKeyPress={(e) => e.key === "Enter" && handleSend()}
             />
           </div>
 
@@ -737,11 +738,9 @@ const ChatWindow = () => {
             </button>
             <button
               onClick={handleSend}
-              disabled={
-                isUserBlocked || (!message.trim() && selectedFiles.length === 0)
-              }
+              disabled={isUserBlocked || (!message.trim() && !selectedFile)}
               className={`px-2 sm:px-3 py-1 sm:py-2 rounded-lg text-xs sm:text-sm text-white ${
-                isUserBlocked || (!message.trim() && selectedFiles.length === 0)
+                isUserBlocked || (!message.trim() && !selectedFile)
                   ? "bg-blue-600 opacity-50 cursor-not-allowed"
                   : "bg-blue-600 hover:bg-blue-700"
               }`}
@@ -757,7 +756,6 @@ const ChatWindow = () => {
           ref={documentInputRef}
           onChange={(e) => handleFileSelect("Document", e)}
           accept=".pdf,.doc,.docx,.txt"
-          multiple
           className="hidden"
         />
         <input
@@ -765,7 +763,6 @@ const ChatWindow = () => {
           ref={photoInputRef}
           onChange={(e) => handleFileSelect("Photo", e)}
           accept="image/*"
-          multiple
           className="hidden"
         />
         <input
@@ -773,7 +770,6 @@ const ChatWindow = () => {
           ref={videoInputRef}
           onChange={(e) => handleFileSelect("Video", e)}
           accept="video/*"
-          multiple
           className="hidden"
         />
         <input
@@ -781,7 +777,6 @@ const ChatWindow = () => {
           ref={audioInputRef}
           onChange={(e) => handleFileSelect("Audio", e)}
           accept="audio/*"
-          multiple
           className="hidden"
         />
         <input
@@ -789,7 +784,6 @@ const ChatWindow = () => {
           ref={contactInputRef}
           onChange={(e) => handleFileSelect("Contact", e)}
           accept=".vcf"
-          multiple
           className="hidden"
         />
 
@@ -862,7 +856,6 @@ const ChatWindow = () => {
           )}
         </AnimatePresence>
 
-        {/* File Preview Modal */}
         <AnimatePresence>
           {previewFile && (
             <motion.div
@@ -891,7 +884,6 @@ const ChatWindow = () => {
           )}
         </AnimatePresence>
 
-        {/* Profile Modal */}
         <AnimatePresence>
           {isProfileModalOpen && (
             <motion.div
