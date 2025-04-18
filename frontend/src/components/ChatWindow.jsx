@@ -7,9 +7,7 @@ import {
   FaHeart,
   FaUserTimes,
   FaExclamationTriangle,
-  FaTrashAlt,
 } from "react-icons/fa";
-import { FaPhone, FaVideo } from "react-icons/fa";
 import { HiDotsVertical } from "react-icons/hi";
 import { AuthContext } from "../utils/AuthProvider";
 import {
@@ -23,7 +21,6 @@ import Picker from "emoji-picker-react";
 import { motion, AnimatePresence } from "framer-motion";
 import mammoth from "mammoth";
 import axios from "axios";
-
 import { socket } from "../utils/commonFunctions/SocketConnection";
 import { fileToBase64 } from "../utils/commonFunctions/ConvertToBase64";
 
@@ -83,7 +80,7 @@ const ChatWindow = () => {
             file: msg.file_url
               ? {
                   name: msg.file_name || "File",
-                  url: msg.file_url,
+                  url: msg.file_url, // Use server-provided URL
                   type: msg.file_type || "application/octet-stream",
                 }
               : null,
@@ -141,7 +138,7 @@ const ChatWindow = () => {
           file: messageData.file_url
             ? {
                 name: messageData.file_name || "File",
-                url: messageData.file_url,
+                url: messageData.file_url, // Use server-provided URL
                 type: messageData.file_type || "application/octet-stream",
               }
             : null,
@@ -157,6 +154,16 @@ const ChatWindow = () => {
 
     socket.on("message_sent", (data) => {
       console.log("Message sent confirmation:", data);
+      // Update the message with the server-provided file_url
+      if (data.file_url) {
+        setChatMessages((prevMessages) =>
+          prevMessages.map((msg) =>
+            msg.id === Date.now() && msg.file
+              ? { ...msg, file: { ...msg.file, url: data.file_url } }
+              : msg
+          )
+        );
+      }
     });
 
     socket.on("error", (error) => {
@@ -327,7 +334,7 @@ const ChatWindow = () => {
           fileData = {
             file_type: selectedFile.type,
             file_name: selectedFile.name,
-            file_url: base64, // In production, upload to server and use URL
+            file_url: base64, // Send base64 to server
           };
         } catch (error) {
           console.error("Error converting file to base64:", error);
@@ -351,12 +358,12 @@ const ChatWindow = () => {
       socket.emit("private_message", messageData);
 
       const newMessage = {
-        id: Date.now(),
+        id: Date.now(), // Temporary ID until server confirms
         text: message.trim() || "",
         file: selectedFile
           ? {
               name: selectedFile.name,
-              url: URL.createObjectURL(selectedFile),
+              url: URL.createObjectURL(selectedFile), // Temporary local URL for instant preview
               type: selectedFile.type,
             }
           : null,
@@ -370,114 +377,6 @@ const ChatWindow = () => {
       setChatMessages((prevMessages) => [...prevMessages, newMessage]);
       setMessage("");
       setSelectedFile(null);
-    }
-  };
-
-  const renderFilePreview = (file, isPreviewModal = false) => {
-    if (!file || !file.url) {
-      return (
-        <div className="flex items-center gap-2">
-          <MdInsertDriveFile className="text-gray-400" />
-          <span>{file?.name || "File"} (File not available)</span>
-        </div>
-      );
-    }
-
-    const fileType = file.type.split("/")[0];
-
-    switch (fileType) {
-      case "image":
-        return (
-          <img
-            src={file.url}
-            alt={file.name}
-            className={
-              isPreviewModal
-                ? "max-w-full max-h-[80vh] object-contain"
-                : "max-w-[150px] sm:max-w-[200px] max-h-[100px] sm:max-h-[150px] rounded-lg object-cover"
-            }
-          />
-        );
-      case "video":
-        return (
-          <video
-            src={file.url}
-            controls
-            className={
-              isPreviewModal
-                ? "max-w-[80vw] max-h-[80vh] w-auto h-auto"
-                : "max-w-[150px] sm:max-w-[200px] max-h-[100px] sm:max-h-[150px] rounded-lg"
-            }
-          />
-        );
-      case "audio":
-        return (
-          <audio
-            src={file.url}
-            controls
-            className={
-              isPreviewModal ? "w-[200px] sm:w-[250px]" : "max-w-[200px] sm:max-w-[250px]"
-            }
-          />
-        );
-      case "application":
-        if (file.type === "application/pdf") {
-          return isPreviewModal ? (
-            <iframe
-              src={file.url}
-              title={file.name}
-              className="w-[70vw] h-[70vh]"
-            />
-          ) : (
-            <div className="flex items-center gap-2">
-              <MdInsertDriveFile className="text-gray-400" />
-              <span>{file.name}</span>
-            </div>
-          );
-        } else if (
-          file.type ===
-          "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        ) {
-          return isPreviewModal ? (
-            <div
-              className="text-white w-[70vw] h-[70vh] overflow-y-auto p-4"
-              dangerouslySetInnerHTML={{
-                __html: fileContents[file.name] || "Loading...",
-              }}
-            />
-          ) : (
-            <div className="flex items-center gap-2">
-              <MdInsertDriveFile className="text-gray-400" />
-              <span>{file.name}</span>
-            </div>
-          );
-        }
-        return (
-          <div className="flex items-center gap-2">
-            <MdInsertDriveFile className="text-gray-400" />
-            <span>{file.name}</span>
-          </div>
-        );
-      case "text":
-        return isPreviewModal ? (
-          <div className="w-[70vw] h-[70vh] overflow-y-auto p-4">
-            <pre className="text-white whitespace-pre-wrap">
-              {fileContents[file.name] || "Loading..."}
-            </pre>
-          </div>
-        ) : (
-          <div className="flex items-center gap-2">
-            <MdInsertDriveFile className="text-gray-400" />
-            <span>{file.name}</span>
-          </div>
-        );
-      default:
-        return (
-          <div className="flex items-center gap-2">
-            <MdInsertDriveFile className="text-gray-400" />
-            <span>{file.name}</span>
-          </div>
-        );
     }
   };
 
@@ -550,16 +449,7 @@ const ChatWindow = () => {
           </div>
         </div>
         <div className="flex space-x-2 sm:space-x-3 relative">
-          <button className="text-gray-400 hover:text-white">
-            <FaPhone className="w-4 h-4 sm:w-5 sm:h-5" />
-          </button>
-          <button className="text-gray-400 hover:text-white">
-            <FaVideo className="w-4 h-4 sm:w-5 sm:h-5" />
-          </button>
-          <button
-            className="text-gray-400 hover:text-white"
-            onClick={toggleMenu}
-          >
+          <button className="text-gray-400 hover:text-white" onClick={toggleMenu}>
             <HiDotsVertical className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
           <AnimatePresence>
@@ -578,15 +468,6 @@ const ChatWindow = () => {
                 >
                   {isUserBlocked ? "Unblock User" : "Block User"}
                 </button>
-                <button
-                  className="block px-2 sm:px-3 py-1 sm:py-2 text-xs sm:text-sm hover:bg-gray-600 w-full text-left"
-                  onClick={() => {
-                    alert("Chat Cleared");
-                    setChatMessages([]);
-                  }}
-                >
-                  Clear Chat
-                </button>
               </motion.div>
             )}
           </AnimatePresence>
@@ -594,7 +475,7 @@ const ChatWindow = () => {
       </div>
 
       {/* Chat Messages Area */}
-      <div className="flex-1 p-2 sm:p-3 overflow-y-auto">
+      <div className="flex-1 p-2 sm:p-3 overflow-y-auto scrollbar-hide">
         {chatMessages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-gray-400">
             <p className="text-xs sm:text-sm">No messages yet.</p>
@@ -643,7 +524,67 @@ const ChatWindow = () => {
                     }`}
                     onClick={() => handleFileClick(msg.file)}
                   >
-                    {renderFilePreview(msg.file)}
+                    {msg.file.url ? (
+                      <>
+                        {msg.file.type.startsWith("image/") && (
+                          <img
+                            src={msg.file.url}
+                            alt={msg.file.name}
+                            className="max-w-[150px] sm:max-w-[200px] max-h-[100px] sm:max-h-[150px] rounded-lg object-cover"
+                          />
+                        )}
+                        {msg.file.type.startsWith("video/") && (
+                          <video
+                            src={msg.file.url}
+                            controls
+                            className="max-w-[150px] sm:max-w-[200px] max-h-[100px] sm:max-h-[150px] rounded-lg"
+                          />
+                        )}
+                        {msg.file.type.startsWith("audio/") && (
+                          <audio
+                            src={msg.file.url}
+                            controls
+                            className="max-w-[200px] sm:max-w-[250px]"
+                          />
+                        )}
+                        {msg.file.type === "application/pdf" && (
+                          <div className="flex items-center gap-2">
+                            <MdInsertDriveFile className="text-gray-400" />
+                            <span>{msg.file.name}</span>
+                          </div>
+                        )}
+                        {msg.file.type ===
+                          "application/vnd.openxmlformats-officedocument.wordprocessingml.document" && (
+                          <div className="flex items-center gap-2">
+                            <MdInsertDriveFile className="text-gray-400" />
+                            <span>{msg.file.name}</span>
+                          </div>
+                        )}
+                        {msg.file.type.startsWith("text/") && (
+                          <div className="flex items-center gap-2">
+                            <MdInsertDriveFile className="text-gray-400" />
+                            <span>{msg.file.name}</span>
+                          </div>
+                        )}
+                        {!msg.file.type.startsWith("image/") &&
+                          !msg.file.type.startsWith("video/") &&
+                          !msg.file.type.startsWith("audio/") &&
+                          msg.file.type !== "application/pdf" &&
+                          msg.file.type !==
+                            "application/vnd.openxmlformats-officedocument.wordprocessingml.document" &&
+                          !msg.file.type.startsWith("text/") && (
+                            <div className="flex items-center gap-2">
+                              <MdInsertDriveFile className="text-gray-400" />
+                              <span>{msg.file.name}</span>
+                            </div>
+                          )}
+                      </>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <MdInsertDriveFile className="text-gray-400" />
+                        <span>{msg.file.name} (File not available)</span>
+                      </div>
+                    )}
                   </div>
                 )}
                 <p
@@ -877,7 +818,71 @@ const ChatWindow = () => {
                   ×
                 </button>
                 <div className="flex justify-center items-center">
-                  {renderFilePreview(previewFile, true)}
+                  {previewFile.url ? (
+                    <>
+                      {previewFile.type.startsWith("image/") && (
+                        <img
+                          src={previewFile.url}
+                          alt={previewFile.name}
+                          className="max-w-full max-h-[80vh] object-contain"
+                        />
+                      )}
+                      {previewFile.type.startsWith("video/") && (
+                        <video
+                          src={previewFile.url}
+                          controls
+                          className="max-w-[80vw] max-h-[80vh] w-auto h-auto"
+                        />
+                      )}
+                      {previewFile.type.startsWith("audio/") && (
+                        <audio
+                          src={previewFile.url}
+                          controls
+                          className="w-[200px] sm:w-[250px]"
+                        />
+                      )}
+                      {previewFile.type === "application/pdf" && (
+                        <iframe
+                          src={previewFile.url}
+                          title={previewFile.name}
+                          className="w-[70vw] h-[70vh]"
+                        />
+                      )}
+                      {previewFile.type ===
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document" && (
+                        <div
+                          className="text-white w-[70vw] h-[70vh] overflow-y-auto p-4"
+                          dangerouslySetInnerHTML={{
+                            __html: fileContents[previewFile.name] || "Loading...",
+                          }}
+                        />
+                      )}
+                      {previewFile.type.startsWith("text/") && (
+                        <div className="w-[70vw] h-[70vh] overflow-y-auto p-4">
+                          <pre className="text-white whitespace-pre-wrap">
+                            {fileContents[previewFile.name] || "Loading..."}
+                          </pre>
+                        </div>
+                      )}
+                      {!previewFile.type.startsWith("image/") &&
+                        !previewFile.type.startsWith("video/") &&
+                        !previewFile.type.startsWith("audio/") &&
+                        previewFile.type !== "application/pdf" &&
+                        previewFile.type !==
+                          "application/vnd.openxmlformats-officedocument.wordprocessingml.document" &&
+                        !previewFile.type.startsWith("text/") && (
+                          <div className="flex items-center gap-2">
+                            <MdInsertDriveFile className="text-gray-400" />
+                            <span>{previewFile.name}</span>
+                          </div>
+                        )}
+                    </>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <MdInsertDriveFile className="text-gray-400" />
+                      <span>{previewFile.name} (File not available)</span>
+                    </div>
+                  )}
                 </div>
               </div>
             </motion.div>
@@ -895,7 +900,7 @@ const ChatWindow = () => {
               onClick={closeProfileModal}
             >
               <div
-                className="relative bg-gray-800 p-2 sm:p-4 rounded-lg w-[20rem] sm:w-[24rem] max-w-[90vw] max-h-[90vh] sm:max-h-[80vh] overflow-auto"
+                className="relative bg-gray-800 p-2 sm:p-4 rounded-lg w-[20rem] sm:w-[24rem] max-w-[90vw] max-h-[90vh] sm:max-h-[80vh] overflow-hidden"
                 onClick={(e) => e.stopPropagation()}
               >
                 <button
@@ -943,14 +948,6 @@ const ChatWindow = () => {
                           <FaExclamationTriangle className="text-red-500" />
                         ),
                         action: () => alert("Reported!"),
-                      },
-                      {
-                        label: "Delete Chat",
-                        icon: <FaTrashAlt className="text-red-500" />,
-                        action: () => {
-                          alert("Chat Deleted!");
-                          setChatMessages([]);
-                        },
                       },
                     ].map((button, index) => (
                       <button

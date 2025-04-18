@@ -1,15 +1,18 @@
 import React, { useState, useContext, useEffect } from "react";
-import { BsCameraVideo, BsTelephone } from "react-icons/bs";
 import { AiOutlineSearch } from "react-icons/ai";
 import { FaTrash } from "react-icons/fa"; // Import trash icon for delete
 import { AuthContext } from "../utils/AuthProvider";
 import axios from "axios";
 
+
+import { triggerAlert } from "../utils/commonFunctions/CommonFunctions";
+
 const ContactList = () => {
+  const { user, getUserDetails } = useContext(AuthContext);
   const [search, setSearch] = useState("");
   const [contactList, setContactList] = useState([]);
   const [selectedContact, setSelectedContact] = useState(null);
-  const { user, getUserDetails } = useContext(AuthContext);
+  
 
   const userList = JSON.parse(localStorage.getItem("user"));
 
@@ -51,27 +54,26 @@ const ContactList = () => {
     getUserDetails(contact);
   };
 
-  // New delete function
   const handleDeleteContact = async (contactId) => {
     try {
       await axios.delete(`http://38.77.155.139:8000/user/delete-user/`, {
-        data: { id: contactId }, 
-        headers: { "Content-Type": "application/json",
-          "Authorization" : `Bearer ${user.token}`},
+        data: { id: contactId },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${user.token}`,
+        },
       });
 
-      // Update contact list by filtering out the deleted contact
       setContactList((prevList) =>
         prevList.filter((contact) => contact.id !== contactId)
       );
 
-      // If the deleted contact was selected, clear the selection
       if (selectedContact?.id === contactId) {
         setSelectedContact(null);
       }
 
-      alert("Contact deleted successfully!");
-      getUserDetails(null)
+      triggerAlert("success","success", "Contact deleted successfully",);
+      getUserDetails(null);
     } catch (error) {
       console.error("Error deleting contact:", error.message);
       alert("Failed to delete contact. Please try again.");
@@ -163,10 +165,8 @@ const ContactList = () => {
               {/* Delete Button */}
               <button
                 onClick={(e) => {
-                  e.stopPropagation(); // Prevent triggering showUserDetails
-                  if (window.confirm("Are you sure you want to delete this contact?")) {
-                    handleDeleteContact(contact.id);
-                  }
+                  e.stopPropagation();
+                  handleDeleteContact(contact.id);
                 }}
                 className="ml-2 text-red-500 hover:text-red-700 transition-colors"
                 title="Delete Contact"
