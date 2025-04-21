@@ -70,7 +70,7 @@ const Profile = () => {
         <div className="relative">
           <motion.img
             src={
-              user?.avatar === null
+              user?.avatar === "null"
               ? "https://i.pinimg.com/236x/00/80/ee/0080eeaeaa2f2fba77af3e1efeade565.jpg"
               : user?.avatar
             }

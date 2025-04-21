@@ -80,7 +80,7 @@ const ChatWindow = () => {
             file: msg.file_url
               ? {
                   name: msg.file_name || "File",
-                  url: msg.file_url, // Use server-provided URL
+                  url: msg.file_url, 
                   type: msg.file_type || "application/octet-stream",
                 }
               : null,
@@ -358,12 +358,12 @@ const ChatWindow = () => {
       socket.emit("private_message", messageData);
 
       const newMessage = {
-        id: Date.now(), // Temporary ID until server confirms
+        id: Date.now(), 
         text: message.trim() || "",
         file: selectedFile
           ? {
               name: selectedFile.name,
-              url: URL.createObjectURL(selectedFile), // Temporary local URL for instant preview
+              url: URL.createObjectURL(selectedFile), 
               type: selectedFile.type,
             }
           : null,

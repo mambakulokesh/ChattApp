@@ -7,7 +7,7 @@ import { triggerAlert } from '../utils/commonFunctions/CommonFunctions';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const Login = () => {
-  const { user, login } = useContext(AuthContext);
+  const {  login } = useContext(AuthContext);
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('login'); 
   const [showForms, setShowForms] = useState(false);
@@ -78,7 +78,7 @@ const Login = () => {
         username: data.username,
         email: data.email,
         password: data.password,
-        avatar: avatarBase64 || null, // Send null if no avatar is provided
+        avatar: avatarBase64 || null, 
       };
 
       await axios.post(
@@ -220,6 +220,8 @@ const Login = () => {
                   'Log In'
                 )}
               </button>
+
+              <p className='text-gray-300 text-center'>If you Don't have an account <a className='text-blue-300 cursor-pointer' onClick={() => setActiveTab('signup')}>Register</a></p>
             </motion.form>
           ) : (
             <motion.form
@@ -233,9 +235,6 @@ const Login = () => {
               aria-labelledby="signup-heading"
               encType="multipart/form-data"
             >
-              <h2 id="signup-heading" className="sr-only">
-                Signup Form
-              </h2>
               <div>
                 <label htmlFor="signup-username" className="block text-sm font-medium text-gray-300 mb-1">
                   Username
@@ -360,6 +359,9 @@ const Login = () => {
                   'Register'
                 )}
               </button>
+
+              <p className='text-gray-300 text-center'>Already Have an Account <a className='text-blue-300 cursor-pointer' onClick={()=> setActiveTab('login')}>Login</a></p>
+
             </motion.form>
           )}
         </AnimatePresence>

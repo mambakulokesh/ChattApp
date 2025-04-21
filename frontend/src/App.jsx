@@ -4,6 +4,7 @@ import Login from './pages/Login'
 import ChatPage from './pages/ChatPage'
 import PrivateRoute from './components/PrivateRoute'
 import { AuthProvider } from './utils/AuthProvider'
+import ChatWindow from './components/ChatWindow'
 
 const appRouter = createBrowserRouter([
   {
@@ -11,7 +12,11 @@ const appRouter = createBrowserRouter([
     element: <Login />,
     children: []
   },
-
+  {
+    path: '/chatpage',
+    element: <ChatWindow />,
+    children: []
+  },
   {
     path: '/',
     element: <PrivateRoute>

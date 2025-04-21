@@ -54,31 +54,31 @@ const ContactList = () => {
     getUserDetails(contact);
   };
 
-  const handleDeleteContact = async (contactId) => {
-    try {
-      await axios.delete(`http://38.77.155.139:8000/user/delete-user/`, {
-        data: { id: contactId },
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${user.token}`,
-        },
-      });
+  // const handleDeleteContact = async (contactId) => {
+  //   try {
+  //     await axios.delete(`http://38.77.155.139:8000/user/delete-user/`, {
+  //       data: { id: contactId },
+  //       headers: {
+  //         "Content-Type": "application/json",
+  //         Authorization: `Bearer ${user.token}`,
+  //       },
+  //     });
 
-      setContactList((prevList) =>
-        prevList.filter((contact) => contact.id !== contactId)
-      );
+  //     setContactList((prevList) =>
+  //       prevList.filter((contact) => contact.id !== contactId)
+  //     );
 
-      if (selectedContact?.id === contactId) {
-        setSelectedContact(null);
-      }
+  //     if (selectedContact?.id === contactId) {
+  //       setSelectedContact(null);
+  //     }
 
-      triggerAlert("success","success", "Contact deleted successfully",);
-      getUserDetails(null);
-    } catch (error) {
-      console.error("Error deleting contact:", error.message);
-      alert("Failed to delete contact. Please try again.");
-    }
-  };
+  //     triggerAlert("success","success", "Contact deleted successfully",);
+  //     getUserDetails(null);
+  //   } catch (error) {
+  //     console.error("Error deleting contact:", error.message);
+  //     alert("Failed to delete contact. Please try again.");
+  //   }
+  // };
 
   const filteredContacts = contactList.filter((contact) =>
     (contact.username || "").toLowerCase().includes(search.toLowerCase())
@@ -91,7 +91,7 @@ const ContactList = () => {
         <div className="flex items-center space-x-4 min-w-0">
           <img
             src={
-              user?.avatar === null
+              user?.avatar === "null"
                 ? "https://i.pinimg.com/236x/00/80/ee/0080eeaeaa2f2fba77af3e1efeade565.jpg"
                 : user?.avatar
             }
@@ -163,16 +163,16 @@ const ContactList = () => {
                 </p>
               </div>
               {/* Delete Button */}
-              <button
+              {/* <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  handleDeleteContact(contact.id);
+                  // handleDeleteContact(contact.id);
                 }}
                 className="ml-2 text-red-500 hover:text-red-700 transition-colors"
                 title="Delete Contact"
               >
                 <FaTrash className="w-4 h-4" />
-              </button>
+              </button> */}
             </div>
           ))
         ) : (

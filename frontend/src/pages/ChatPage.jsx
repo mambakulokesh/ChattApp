@@ -7,11 +7,7 @@ import { FaUser, FaComments, FaAddressBook } from 'react-icons/fa';
 const ChatPage = () => {
   const [activeTab, setActiveTab] = useState('contacts');
 
-  // Callback to switch to chat tab when a contact is selected
-  const handleContactSelect = () => {
-    setActiveTab('chat');
-  };
-
+  
   return (
     <div className="min-h-screen w-full bg-gray-100">
       <div className="flex flex-col md:flex-row h-screen w-full bg-white">
@@ -54,7 +50,7 @@ const ChatPage = () => {
               activeTab === 'contacts' ? 'block' : 'hidden'
             } md:block w-full md:w-1/4 h-full bg-white border-gray-200 overflow-y-auto`}
           >
-            <ContactList onContactSelect={handleContactSelect} />
+            <ContactList />
           </div>
 
           {/* ChatWindow */}
