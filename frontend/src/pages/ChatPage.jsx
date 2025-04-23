@@ -3,6 +3,7 @@ import ChatWindow from '../components/ChatWindow';
 import Profile from '../components/Profile';
 import ContactList from '../components/ContactList';
 import { FaUser, FaComments, FaAddressBook } from 'react-icons/fa';
+import { set } from 'react-hook-form';
 
 const ChatPage = () => {
   const [activeTab, setActiveTab] = useState('contacts');
@@ -50,7 +51,7 @@ const ChatPage = () => {
               activeTab === 'contacts' ? 'block' : 'hidden'
             } md:block w-full md:w-1/4 h-full bg-white border-gray-200 overflow-y-auto`}
           >
-            <ContactList />
+            <ContactList setActiveTab={setActiveTab} />
           </div>
 
           {/* ChatWindow */}
@@ -59,7 +60,7 @@ const ChatPage = () => {
               activeTab === 'chat' ? 'block' : 'hidden'
             } md:block w-full md:w-1/2 lg:w-2/3 h-full bg-gray-50 overflow-y-auto`}
           >
-            <ChatWindow />
+            <ChatWindow  />
           </div>
 
           {/* Profile */}

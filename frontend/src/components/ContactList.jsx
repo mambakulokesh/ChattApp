@@ -1,18 +1,17 @@
 import React, { useState, useContext, useEffect } from "react";
 import { AiOutlineSearch } from "react-icons/ai";
-import { FaTrash } from "react-icons/fa"; // Import trash icon for delete
+import { FaTrash } from "react-icons/fa";
 import { AuthContext } from "../utils/AuthProvider";
 import axios from "axios";
-
-
+import { socket } from "../utils/commonFunctions/SocketConnection";
 import { triggerAlert } from "../utils/commonFunctions/CommonFunctions";
 
-const ContactList = () => {
+const ContactList = ({ setActiveTab }) => {
   const { user, getUserDetails } = useContext(AuthContext);
   const [search, setSearch] = useState("");
   const [contactList, setContactList] = useState([]);
   const [selectedContact, setSelectedContact] = useState(null);
-  
+  const [unreadCounts, setUnreadCounts] = useState({}); // Track unread message counts
 
   const userList = JSON.parse(localStorage.getItem("user"));
 
@@ -47,38 +46,43 @@ const ContactList = () => {
     fetchUsers();
   }, [user]);
 
+  useEffect(() => {
+    if (!user || !user.token) return;
+
+    // Listen for new messages to update unread counts
+    socket.on("new_message", (messageData) => {
+      console.log("Received new_message in ContactList:", messageData);
+      // Check if the message is for the logged-in user and from another user
+      if (
+        messageData.receiver_id === user.id &&
+        messageData.sender_id !== selectedContact?.id
+      ) {
+        // Increment unread count for the sender
+        setUnreadCounts((prevCounts) => ({
+          ...prevCounts,
+          [messageData.sender_id]:
+            (prevCounts[messageData.sender_id] || 0) + 1,
+        }));
+      }
+    });
+
+    return () => {
+      socket.off("new_message");
+    };
+  }, [user, selectedContact]);
+
   const handleSearchChange = (e) => setSearch(e.target.value);
 
   const showUserDetails = (contact) => {
     setSelectedContact(contact);
     getUserDetails(contact);
+    setActiveTab("chat");
+    // Reset unread count for the selected contact
+    setUnreadCounts((prevCounts) => ({
+      ...prevCounts,
+      [contact.id]: 0,
+    }));
   };
-
-  // const handleDeleteContact = async (contactId) => {
-  //   try {
-  //     await axios.delete(`http://38.77.155.139:8000/user/delete-user/`, {
-  //       data: { id: contactId },
-  //       headers: {
-  //         "Content-Type": "application/json",
-  //         Authorization: `Bearer ${user.token}`,
-  //       },
-  //     });
-
-  //     setContactList((prevList) =>
-  //       prevList.filter((contact) => contact.id !== contactId)
-  //     );
-
-  //     if (selectedContact?.id === contactId) {
-  //       setSelectedContact(null);
-  //     }
-
-  //     triggerAlert("success","success", "Contact deleted successfully",);
-  //     getUserDetails(null);
-  //   } catch (error) {
-  //     console.error("Error deleting contact:", error.message);
-  //     alert("Failed to delete contact. Please try again.");
-  //   }
-  // };
 
   const filteredContacts = contactList.filter((contact) =>
     (contact.username || "").toLowerCase().includes(search.toLowerCase())
@@ -96,17 +100,16 @@ const ContactList = () => {
                 : user?.avatar
             }
             alt={user?.username}
-            className={`w-8 h-8 rounded-full ${
-              user?.active_status
+            className={`w-8 h-8 rounded-full ${user?.active_status
                 ? "ring-4 ring-green-500"
                 : "ring-4 ring-gray-700"
-            }`}
+              }`}
           />
           <div className="flex flex-col leading-tight min-w-0">
             <h3 className="text-md font-semibold truncate">
-              {userList?.username}
+              {user?.username}
             </h3>
-            <p className="text-xs text-gray-400">{userList?.bio}</p>
+            <p className="text-xs text-gray-400">{user?.bio}</p>
           </div>
         </div>
       </div>
@@ -131,13 +134,11 @@ const ContactList = () => {
           filteredContacts.map((contact, index) => (
             <div
               key={contact.id}
-              className={`flex items-center p-3 px-6 py-4 hover:bg-gray-800 cursor-pointer transition-all animate-slideIn ${
-                selectedContact?.id === contact.id ? "bg-gray-700" : ""
-              } ${
-                index !== filteredContacts.length - 1
+              className={`flex items-center p-3 px-6 py-4 hover:bg-gray-800 cursor-pointer transition-all animate-slideIn ${selectedContact?.id === contact.id ? "bg-gray-700" : ""
+                } ${index !== filteredContacts.length - 1
                   ? "border-b border-gray-700"
                   : ""
-              }`}
+                }`}
               style={{ animationDelay: `${index * 0.1}s` }}
               onClick={() => showUserDetails(contact)}
             >
@@ -148,31 +149,26 @@ const ContactList = () => {
                     : contact.avatar
                 }
                 alt={contact.username}
-                className={`w-8 h-8 rounded-full ${
-                  contact.is_active
+                className={`w-8 h-8 rounded-full ${contact.is_active
                     ? "ring-4 ring-green-500"
                     : "ring-4 ring-gray-700"
-                }`}
+                  }`}
               />
-              <div className="flex flex-col ml-3 leading-tight min-w-0 flex-1">
-                <h3 className="text-md font-semibold truncate">
-                  {contact.username}
-                </h3>
-                <p className="text-xs text-gray-400 truncate">
-                  {contact.status}
-                </p>
+            <div className="flex justify-between items-center flex-1 ml-3">
+                <div className="flex flex-col leading-tight min-w-0">
+                  <h3 className="text-md font-semibold truncate">
+                    {contact.username}
+                  </h3>
+                  <p className="text-xs text-gray-400 truncate">
+                    {contact.status}
+                  </p>
+                </div>
+                {unreadCounts[contact.id] > 0 && (
+                  <span className="bg-blue-600 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                    {unreadCounts[contact.id]}
+                  </span>
+                )}
               </div>
-              {/* Delete Button */}
-              {/* <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  // handleDeleteContact(contact.id);
-                }}
-                className="ml-2 text-red-500 hover:text-red-700 transition-colors"
-                title="Delete Contact"
-              >
-                <FaTrash className="w-4 h-4" />
-              </button> */}
             </div>
           ))
         ) : (

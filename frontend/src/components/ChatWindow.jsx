@@ -80,7 +80,7 @@ const ChatWindow = () => {
             file: msg.file_url
               ? {
                   name: msg.file_name || "File",
-                  url: msg.file_url, 
+                  url: msg.file_url,
                   type: msg.file_type || "application/octet-stream",
                 }
               : null,
@@ -138,7 +138,7 @@ const ChatWindow = () => {
           file: messageData.file_url
             ? {
                 name: messageData.file_name || "File",
-                url: messageData.file_url, // Use server-provided URL
+                url: messageData.file_url,
                 type: messageData.file_type || "application/octet-stream",
               }
             : null,
@@ -154,7 +154,6 @@ const ChatWindow = () => {
 
     socket.on("message_sent", (data) => {
       console.log("Message sent confirmation:", data);
-      // Update the message with the server-provided file_url
       if (data.file_url) {
         setChatMessages((prevMessages) =>
           prevMessages.map((msg) =>
@@ -259,7 +258,7 @@ const ChatWindow = () => {
       setSelectedFile(file);
     }
     setIsPinDropdownOpen(false);
-    event.target.value = null; // Reset input to allow re-selecting the same file
+    event.target.value = null;
   };
 
   const openFileInput = (inputRef) => inputRef.current.click();
@@ -334,7 +333,7 @@ const ChatWindow = () => {
           fileData = {
             file_type: selectedFile.type,
             file_name: selectedFile.name,
-            file_url: base64, // Send base64 to server
+            file_url: base64,
           };
         } catch (error) {
           console.error("Error converting file to base64:", error);
@@ -358,12 +357,12 @@ const ChatWindow = () => {
       socket.emit("private_message", messageData);
 
       const newMessage = {
-        id: Date.now(), 
+        id: Date.now(),
         text: message.trim() || "",
         file: selectedFile
           ? {
               name: selectedFile.name,
-              url: URL.createObjectURL(selectedFile), 
+              url: URL.createObjectURL(selectedFile),
               type: selectedFile.type,
             }
           : null,
@@ -409,7 +408,7 @@ const ChatWindow = () => {
 
   if (isuserEmpty) {
     return (
-      <div className="flex flex-col h-full w-full bg-gray-900 justify-center items-center">
+      <div className="flex flex-col h-screen w-full bg-gray-900 justify-center items-center">
         <h2 className="text-white text-base sm:text-lg font-semibold">
           Start Your Conversation
         </h2>
@@ -423,7 +422,7 @@ const ChatWindow = () => {
   return (
     <div className="flex flex-col h-full w-full bg-gray-900">
       {/* Header */}
-      <div className="flex items-center p-2 sm:p-3 bg-gray-800 border-b border-gray-700 shrink-0">
+      <div className="flex items-center p-2 sm:p-3 bg-gray-800 fixed w-full border-b border-gray-700 shrink-0">
         <div
           onClick={openProfileModal}
           className="cursor-pointer flex items-center flex-1 min-w-0"
