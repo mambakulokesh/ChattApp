@@ -3,12 +3,10 @@ import ChatWindow from '../components/ChatWindow';
 import Profile from '../components/Profile';
 import ContactList from '../components/ContactList';
 import { FaUser, FaComments, FaAddressBook } from 'react-icons/fa';
-import { set } from 'react-hook-form';
 
 const ChatPage = () => {
   const [activeTab, setActiveTab] = useState('contacts');
 
-  
   return (
     <div className="min-h-screen w-full bg-gray-100">
       <div className="flex flex-col md:flex-row h-screen w-full bg-white">
@@ -23,7 +21,7 @@ const ChatPage = () => {
           >
             <FaAddressBook className="inline-block mr-1" /> Contacts
           </button>
-          <button
+          {/* <button
             onClick={() => setActiveTab('chat')}
             className={`flex-1 p-2 text-center rounded-lg text-sm sm:text-base ${
               activeTab === 'chat' ? 'bg-gray-600' : 'hover:bg-gray-700'
@@ -31,7 +29,7 @@ const ChatPage = () => {
             aria-label="Show Chat"
           >
             <FaComments className="inline-block mr-1" /> Chat
-          </button>
+          </button> */}
           <button
             onClick={() => setActiveTab('profile')}
             className={`flex-1 p-2 text-center rounded-lg text-sm sm:text-base ${

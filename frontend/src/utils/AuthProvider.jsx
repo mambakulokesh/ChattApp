@@ -9,15 +9,7 @@ export const AuthProvider = ({children})=>{
       })
     const [userDetails,setUserDetails] = useState({})
 
-    // useEffect(()=>{
-    //     // window.addEventListener('beforeunload',()=>{
-    //     //     localStorage.removeItem('user')
-    //     // })
-    //     const storedUser = JSON.parse(localStorage.getItem("user"))
-    //     if(storedUser){
-    //         setUser(storedUser)
-    //     }
-    // },[])
+    
 
     const login = (data) =>{
         setUser(data)
@@ -26,6 +18,7 @@ export const AuthProvider = ({children})=>{
 
     const logout = () =>{
         setUser(null)
+        setUserDetails({})
         localStorage.removeItem('user');
     }
 
@@ -41,5 +34,3 @@ export const AuthProvider = ({children})=>{
     )
 
 }
-
-

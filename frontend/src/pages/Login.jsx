@@ -6,6 +6,10 @@ import axios from 'axios';
 import { triggerAlert } from '../utils/commonFunctions/CommonFunctions';
 import { motion, AnimatePresence } from 'framer-motion';
 
+
+import { socket } from '../utils/commonFunctions/SocketConnection';
+
+
 const Login = () => {
   const {  login } = useContext(AuthContext);
   const navigate = useNavigate();
@@ -44,8 +48,9 @@ const Login = () => {
       );
 
       const loggedInData = loginResponse.data.data;
+
       
-      login({ ...loggedInData });
+      login(loggedInData);
       triggerAlert('success', 'Success', 'Login Successful');
       navigate('/');
       resetLogin();
@@ -62,7 +67,10 @@ const Login = () => {
     setSignupLoading(true);
     try {
       let avatarBase64 = '';
+      let fileName = '';
+
       if (data.avatar[0]) {
+        fileName = data.avatar[0].name;
         avatarBase64 = await new Promise((resolve, reject) => {
           const reader = new FileReader();
           reader.onload = () => {
@@ -78,7 +86,8 @@ const Login = () => {
         username: data.username,
         email: data.email,
         password: data.password,
-        avatar: avatarBase64 || null, 
+        dp: avatarBase64 || null, 
+        file_name: fileName || null
       };
 
       await axios.post(
