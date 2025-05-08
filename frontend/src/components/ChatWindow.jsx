@@ -22,6 +22,7 @@ import mammoth from "mammoth";
 import axios from "axios";
 import { socket } from "../utils/commonFunctions/SocketConnection";
 import { fileToBase64 } from "../utils/commonFunctions/ConvertToBase64";
+import * as XLSX from "xlsx";
 
 const getDateLabel = (timestamp) => {
   const messageDate = new Date(timestamp);
@@ -102,12 +103,19 @@ const ChatWindow = () => {
   const allowedFileTypes = [
     "image/png",
     "image/jpeg",
-    "application/pdf",
-    "text/plain",
     "video/mp4",
+    "video/webm",
     "audio/mp3",
     "audio/mpeg",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  ];
+
+  const documentFileTypes = [
+    "application/pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/msword",
+    "text/plain",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   ];
 
   const fetchFileContent = async (file) => {
@@ -135,6 +143,23 @@ const ChatWindow = () => {
         return result.value;
       } else if (file.type === "application/pdf") {
         return proxiedUrl;
+      } else if (
+        file.type === "application/vnd.ms-excel" ||
+        file.type ===
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      ) {
+        const response = await fetch(proxiedUrl, {
+          headers: { Authorization: `Bearer ${user.token}` },
+        });
+        if (!response.ok) throw new Error("Failed to fetch Excel file");
+        const arrayBuffer = await response.arrayBuffer();
+        const workbook = XLSX.read(new Uint8Array(arrayBuffer), {
+          type: "array",
+        });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        const html = XLSX.utils.sheet_to_html(worksheet);
+        return html;
       }
     } catch (error) {
       console.error(`Error fetching content for ${file.name}:`, error);
@@ -160,6 +185,18 @@ const ChatWindow = () => {
             const arrayBuffer = await file.arrayBuffer();
             const result = await mammoth.convertToHtml({ arrayBuffer });
             content = result.value;
+          } else if (
+            file.type === "application/vnd.ms-excel" ||
+            file.type ===
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          ) {
+            const arrayBuffer = await file.arrayBuffer();
+            const workbook = XLSX.read(new Uint8Array(arrayBuffer), {
+              type: "array",
+            });
+            const firstSheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[firstSheetName];
+            content = XLSX.utils.sheet_to_html(worksheet);
           }
           setFileContents((prev) => ({
             ...prev,
@@ -186,7 +223,10 @@ const ChatWindow = () => {
         previewFile.type === "text/plain" ||
         previewFile.type ===
           "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
-        previewFile.type === "application/pdf"
+        previewFile.type === "application/pdf" ||
+        previewFile.type === "application/vnd.ms-excel" ||
+        previewFile.type ===
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
       ) {
         const content = await fetchFileContent(previewFile);
         setFileContents((prev) => ({
@@ -223,9 +263,9 @@ const ChatWindow = () => {
           }
 
           console.log(
-            `Fetching ${userDetails.type === "group" ? "group" : "private"} messages for ${
-              userDetails.type === "group" ? "group" : "user"
-            }:`,
+            `Fetching ${
+              userDetails.type === "group" ? "group" : "private"
+            } messages for ${userDetails.type === "group" ? "group" : "user"}:`,
             userDetails.id
           );
 
@@ -260,12 +300,21 @@ const ChatWindow = () => {
                 : msg.sender === user.id
                 ? "self"
                 : "other",
+            sender_name: msg.sender_name,
             timestamp: msg.timestamp,
             time: getTimeString(msg.timestamp),
             dateLabel: getDateLabel(msg.timestamp),
+            status: msg.sender === user.id ? 'sent' : 'read',
           }));
 
           setChatMessages(messages);
+
+         
+        socket.emit('mark_conversation_seen', {
+          user_id: user.id,
+          conversation_id: userDetails.id,
+          conversation_type: userDetails.type === 'group' ? 'group' : 'private',
+        });
         } catch (error) {
           console.error(
             `Error fetching ${
@@ -274,7 +323,9 @@ const ChatWindow = () => {
             error
           );
           setErrorMessage(
-            `Failed to load ${userDetails.type === "group" ? "group" : "private"} messages`
+            `Failed to load ${
+              userDetails.type === "group" ? "group" : "private"
+            } messages`
           );
           setChatMessages([]);
         } finally {
@@ -283,6 +334,7 @@ const ChatWindow = () => {
       };
 
       fetchMessages();
+
     } else {
       setChatMessages([]);
     }
@@ -296,6 +348,7 @@ const ChatWindow = () => {
       console.log("Connected to Socket.IO server with ID:", socket.id);
       socket.emit("authenticate", { token: user.token });
       socket.emit("make_active", { token: user.token });
+      socket.emit("get_unread_count", { user_id: user.id });
     });
 
     socket.on("auth_success", (data) => {
@@ -329,6 +382,7 @@ const ChatWindow = () => {
           timestamp: messageData.timestamp,
           time: getTimeString(messageData.timestamp),
           dateLabel: getDateLabel(messageData.timestamp),
+          status: messageData.sender_id === user.id ? 'sent' : 'read',
         };
 
         setChatMessages((prevMessages) => {
@@ -355,6 +409,14 @@ const ChatWindow = () => {
           }
         }
       }
+
+      socket.emit('mark_conversation_seen', {
+        user_id: user.id,
+        conversation_id: userDetails.id,
+        conversation_type: 'private',
+      });
+
+      socket.emit("get_unread_count", { user_id: user.id });
     });
 
     socket.on("new_group_message", async (messageData) => {
@@ -375,9 +437,11 @@ const ChatWindow = () => {
             : [],
           sender:
             messageData.sender_id === user.id ? "self" : messageData.sender_id,
+          sender_name: messageData.sender_name,
           timestamp: messageData.timestamp,
           time: getTimeString(messageData.timestamp),
           dateLabel: getDateLabel(messageData.timestamp),
+          status: messageData.sender_id === user.id ? 'sent' : 'read',
         };
 
         setChatMessages((prevMessages) => {
@@ -404,7 +468,15 @@ const ChatWindow = () => {
           }
         }
       }
+
+      socket.emit('mark_conversation_seen', {
+        user_id: user.id,
+        conversation_id: userDetails.id,
+        conversation_type: 'group',
+      });
+      socket.emit("get_unread_count", { user_id: user.id });
     });
+
 
     socket.on("message_sent", (data) => {
       console.log("Message sent confirmation:", data);
@@ -413,14 +485,15 @@ const ChatWindow = () => {
           msg.tempId === data.tempId
             ? {
                 ...msg,
-                id: data.id || msg.id, 
-                tempId: undefined, 
+                id: data.id || msg.id,
+                tempId: undefined,
                 files: data.file_urls
                   ? msg.files.map((file, index) => ({
                       ...file,
                       url: data.file_urls[index] || file.url,
                     }))
                   : msg.files,
+                status: 'sent',
               }
             : msg
         )
@@ -429,29 +502,25 @@ const ChatWindow = () => {
 
     socket.on("group_message_sent", (data) => {
       console.log("Group message sent confirmation:", data);
-      // setChatMessages((prevMessages) =>
-      //   prevMessages.map((msg) =>
-      //     msg.tempId === data.tempId
-      //       ? {
-      //           ...msg,
-      //           id: data.id || msg.id,
-      //           tempId: undefined,
-      //           files: data.files
-      //             ? data.files.map((file) => ({
-      //                 name: file.file_name || "File",
-      //                 url: file.file_url,
-      //                 type: file.file_type || "application/octet-stream",
-      //               }))
-      //             : msg.files,
-      //         }
-      //       : msg
-      //   )
-      // );
-    });
-
-    socket.on("group_message_error", (error) => {
-      console.error("Group message error:", error.message);
-      setErrorMessage(error.message || "Failed to send group message");
+      setChatMessages((prevMessages) =>
+        prevMessages.map((msg) =>
+          msg.tempId === data.tempId
+            ? {
+                ...msg,
+                id: data.id || msg.id,
+                tempId: undefined,
+                files: data.files
+                  ? data.files.map((file) => ({
+                      name: file.file_name || "File",
+                      url: file.file_url,
+                      type: file.file_type || "application/octet-stream",
+                    }))
+                  : msg.files,
+                status: 'sent',
+              }
+            : msg
+        )
+      );
     });
 
     socket.on("status_updated", (data) => {
@@ -483,7 +552,6 @@ const ChatWindow = () => {
       socket.off("new_group_message");
       socket.off("message_sent");
       socket.off("group_message_sent");
-      socket.off("group_message_error");
       socket.off("status_updated");
       socket.off("error");
       socket.off("connect_error");
@@ -676,24 +744,6 @@ const ChatWindow = () => {
     }
   };
 
-  // const handleMicClick = () => {
-  //   if (isRecording) {
-  //     stopRecording();
-  //   } else {
-  //     startRecording();
-  //   }
-  // };
-
-  // const handleCameraClick = () => {
-  //   if (isVideoRecording) {
-  //     pauseVideoRecording();
-  //   } else if (videoMediaRecorder && videoMediaRecorder.state === "paused") {
-  //     resumeVideoRecording();
-  //   } else {
-  //     startVideoRecording();
-  //   }
-  // };
-
   const handleSend = async () => {
     if (!isUserBlocked && (message.trim() || selectedFiles.length)) {
       const tempId = Date.now() + Math.random();
@@ -704,10 +754,13 @@ const ChatWindow = () => {
           try {
             fileDataArray = await Promise.all(
               selectedFiles.map(async (file) => {
-                if (!allowedFileTypes.includes(file.type)) {
+                if (
+                  !allowedFileTypes.includes(file.type) &&
+                  !documentFileTypes.includes(file.type)
+                ) {
                   throw new Error(`Invalid file type: ${file.type}`);
                 }
-                if (file.size > 5 * 1024 * 1024) {
+                if (file.size > 10 * 1024 * 1024) {
                   throw new Error(`File ${file.name} exceeds 5MB limit`);
                 }
                 const base64 = await fileToBase64(file);
@@ -728,9 +781,11 @@ const ChatWindow = () => {
         const messageData = {
           sender_id: user.id,
           group_id: userDetails.id,
+          sender_name: user.username,
           content: message.trim() || "",
           files: fileDataArray,
           tempId,
+          status: 'sent',
         };
 
         console.log("Sending group_message:", messageData);
@@ -749,6 +804,7 @@ const ChatWindow = () => {
           timestamp: new Date().toISOString(),
           time: getTimeString(new Date()),
           dateLabel: getDateLabel(new Date()),
+          status: 'sent',
         };
 
         setChatMessages((prevMessages) => [...prevMessages, newMessage]);
@@ -760,10 +816,13 @@ const ChatWindow = () => {
           try {
             fileDataArray = await Promise.all(
               selectedFiles.map(async (file) => {
-                if (!allowedFileTypes.includes(file.type)) {
+                if (
+                  !allowedFileTypes.includes(file.type) &&
+                  !documentFileTypes.includes(file.type)
+                ) {
                   throw new Error(`Invalid file type: ${file.type}`);
                 }
-                if (file.size > 5 * 1024 * 1024) {
+                if (file.size > 10 * 1024 * 1024) {
                   throw new Error(`File ${file.name} exceeds 5MB limit`);
                 }
                 const base64 = await fileToBase64(file);
@@ -788,6 +847,7 @@ const ChatWindow = () => {
           files: fileDataArray,
           timestamp: new Date().toISOString(),
           tempId,
+          status: 'sent',
         };
 
         console.log("Sending private_message:", messageData);
@@ -806,6 +866,7 @@ const ChatWindow = () => {
           timestamp: new Date().toISOString(),
           time: getTimeString(new Date()),
           dateLabel: getDateLabel(new Date()),
+          status: 'sent',
         };
 
         setChatMessages((prevMessages) => [...prevMessages, newMessage]);
@@ -816,7 +877,15 @@ const ChatWindow = () => {
   };
 
   const handleFileClick = (file) => {
-    setPreviewFile(file);
+    if (documentFileTypes.includes(file.type)) {
+      if (file.url) {
+        window.open(file.url, "_blank");
+      } else {
+        setErrorMessage(`File ${file.name} is not available for download.`);
+      }
+    } else {
+      setPreviewFile(file);
+    }
   };
 
   const closePreview = () => {
@@ -872,7 +941,8 @@ const ChatWindow = () => {
         </div>
       )}
 
-      <div className="flex items-center p-2 sm:p-3 bg-gray-800 border-b border-gray-700 shrink-0">
+      {/* Header */}
+      <div className="flex items-center p-2 sm:py-4 bg-gray-800 border-b border-gray-700 shrink-0">
         <div
           onClick={openProfileModal}
           className="cursor-pointer flex items-center flex-1 min-w-0"
@@ -887,11 +957,11 @@ const ChatWindow = () => {
               alt={
                 userDetails.type === "group" ? "Group Avatar" : "User Avatar"
               }
-              className="w-6 h-6 sm:w-8 sm:h-8 rounded-full mr-2"
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full mr-2"
             />
           </div>
           <div className="flex-1 min-w-0">
-            <h2 className="text-xs sm:text-sm font-semibold text-white truncate">
+            <h2 className="text-sm sm:text-sm font-semibold text-white truncate">
               {userDetails?.username ||
                 (userDetails.type === "group" ? "Group Chat" : "User")}
             </h2>
@@ -948,6 +1018,7 @@ const ChatWindow = () => {
         </div>
       </div>
 
+      {/* Chat Messages */}
       <div className="flex-1 p-2 sm:p-3 overflow-y-auto scrollbar-hide relative">
         {isLoading && (
           <div className="absolute inset-0 flex items-center justify-center bg-gray-900 bg-opacity-50">
@@ -991,14 +1062,14 @@ const ChatWindow = () => {
                         />
                         <div>
                           {userDetails.type === "group" && (
-                            <span className="text-xs text-gray-400 block">
-                              {msg.sender}
+                            <span className="text-xs text-white block">
+                              {msg.sender_name}
                             </span>
                           )}
                           <div className="w-full">
                             {msg.text && (
                               <div
-                                className={`p-1 sm:p-2 rounded-lg text-xs sm:text-sm bg-gray-700 text-white`}
+                                className={`p-2 sm:p-2 rounded-lg text-sm sm:text-sm bg-gray-700 text-white`}
                               >
                                 {msg.text}
                               </div>
@@ -1008,7 +1079,11 @@ const ChatWindow = () => {
                                 {msg.files.map((file, fileIndex) => (
                                   <div
                                     key={fileIndex}
-                                    className={`p-1 sm:p-2 rounded-lg cursor-pointer bg-gray-700 text-white`}
+                                    className={`p-1 sm:p-2 rounded-lg cursor-pointer ${
+                                      msg.sender === "self"
+                                        ? "bg-blue-600"
+                                        : "bg-gray-700"
+                                    } text-white`}
                                     onClick={() => handleFileClick(file)}
                                   >
                                     {file.url ? (
@@ -1034,20 +1109,9 @@ const ChatWindow = () => {
                                             className="max-w-[200px] sm:max-w-[250px]"
                                           />
                                         )}
-                                        {file.type === "application/pdf" && (
-                                          <div className="flex items-center gap-2">
-                                            <MdInsertDriveFile className="text-gray-400" />
-                                            <span>{file.name}</span>
-                                          </div>
-                                        )}
-                                        {file.type ===
-                                          "application/vnd.openxmlformats-officedocument.wordprocessingml.document" && (
-                                          <div className="flex items-center gap-2">
-                                            <MdInsertDriveFile className="text-gray-400" />
-                                            <span>{file.name}</span>
-                                          </div>
-                                        )}
-                                        {file.type.startsWith("text/") && (
+                                        {documentFileTypes.includes(
+                                          file.type
+                                        ) && (
                                           <div className="flex items-center gap-2">
                                             <MdInsertDriveFile className="text-gray-400" />
                                             <span>{file.name}</span>
@@ -1056,11 +1120,9 @@ const ChatWindow = () => {
                                         {!file.type.startsWith("image/") &&
                                           !file.type.startsWith("video/") &&
                                           !file.type.startsWith("audio/") &&
-                                          ![
-                                            "application/pdf",
-                                            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                                            "text/plain",
-                                          ].includes(file.type) && (
+                                          !documentFileTypes.includes(
+                                            file.type
+                                          ) && (
                                             <div className="flex items-center gap-2">
                                               <MdInsertDriveFile className="text-gray-400" />
                                               <span>{file.name}</span>
@@ -1070,16 +1132,20 @@ const ChatWindow = () => {
                                     ) : (
                                       <div className="flex items-center gap-2">
                                         <MdInsertDriveFile className="text-gray-400" />
-                                        <span>{file.name} (File not available)</span>
+                                        <span>
+                                          {file.name} (File not available)
+                                        </span>
                                       </div>
                                     )}
                                   </div>
                                 ))}
                               </div>
                             )}
-                            <p className="text-xs text-gray-400 mt-1 text-left">
-                              {msg.time}
-                            </p>
+                            <div className="flex items-center justify-end">
+                              <p className="text-xs text-gray-400 mt-1 text-left">
+                                {msg.time}
+                              </p>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -1087,9 +1153,7 @@ const ChatWindow = () => {
                     {msg.sender === "self" && (
                       <div className="max-w-[80%]">
                         {msg.text && (
-                          <div
-                            className="p-1 sm:p-2 rounded-lg text-xs sm:text-sm bg-blue-600 text-white"
-                          >
+                          <div className="p-2 sm:p-2 rounded-lg text-sm sm:text-sm bg-blue-600 text-white">
                             {msg.text}
                           </div>
                         )}
@@ -1098,7 +1162,11 @@ const ChatWindow = () => {
                             {msg.files.map((file, fileIndex) => (
                               <div
                                 key={fileIndex}
-                                className="p-1 sm:p-2 rounded-lg cursor-pointer bg-blue-600 text-white"
+                                className={`p-1 sm:p-2 rounded-lg cursor-pointer ${
+                                  msg.sender === "self"
+                                    ? "bg-blue-600"
+                                    : "bg-gray-700"
+                                } text-white`}
                                 onClick={() => handleFileClick(file)}
                               >
                                 {file.url ? (
@@ -1124,20 +1192,7 @@ const ChatWindow = () => {
                                         className="max-w-[200px] sm:max-w-[250px]"
                                       />
                                     )}
-                                    {file.type === "application/pdf" && (
-                                      <div className="flex items-center gap-2">
-                                        <MdInsertDriveFile className="text-gray-400" />
-                                        <span>{file.name}</span>
-                                      </div>
-                                    )}
-                                    {file.type ===
-                                      "application/vnd.openxmlformats-officedocument.wordprocessingml.document" && (
-                                      <div className="flex items-center gap-2">
-                                        <MdInsertDriveFile className="text-gray-400" />
-                                        <span>{file.name}</span>
-                                      </div>
-                                    )}
-                                    {file.type.startsWith("text/") && (
+                                    {documentFileTypes.includes(file.type) && (
                                       <div className="flex items-center gap-2">
                                         <MdInsertDriveFile className="text-gray-400" />
                                         <span>{file.name}</span>
@@ -1146,11 +1201,9 @@ const ChatWindow = () => {
                                     {!file.type.startsWith("image/") &&
                                       !file.type.startsWith("video/") &&
                                       !file.type.startsWith("audio/") &&
-                                      ![
-                                        "application/pdf",
-                                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                                        "text/plain",
-                                      ].includes(file.type) && (
+                                      !documentFileTypes.includes(
+                                        file.type
+                                      ) && (
                                         <div className="flex items-center gap-2">
                                           <MdInsertDriveFile className="text-gray-400" />
                                           <span>{file.name}</span>
@@ -1160,16 +1213,29 @@ const ChatWindow = () => {
                                 ) : (
                                   <div className="flex items-center gap-2">
                                     <MdInsertDriveFile className="text-gray-400" />
-                                    <span>{file.name} (File not available)</span>
+                                    <span>
+                                      {file.name} (File not available)
+                                    </span>
                                   </div>
                                 )}
                               </div>
                             ))}
                           </div>
                         )}
-                        <p className="text-xs text-gray-400 mt-1 text-right">
-                          {msg.time}
-                        </p>
+                        <div className="flex items-center justify-end">
+                          <p className="text-xs text-gray-400 mt-1 text-right">
+                            {msg.time}
+                          </p>
+                          {msg.status === 'sent' && (
+                            <span className="ml-1 text-xs text-gray-400">✓</span>
+                          )}
+                          {msg.status === 'delivered' && (
+                            <span className="ml-1 text-xs text-gray-400">✓✓</span>
+                          )}
+                          {msg.status === 'read' && (
+                            <span className="ml-1 text-xs text-blue-400">✓✓</span>
+                          )}
+                        </div>
                       </div>
                     )}
                   </motion.div>
@@ -1192,43 +1258,6 @@ const ChatWindow = () => {
             >
               <FaMapPin className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
-            {/* <button
-              onClick={handleCameraClick}
-              disabled={isUserBlocked}
-              className={`text-gray-400 hover:text-white ${
-                isVideoRecording ? "text-red-500" : ""
-              }`}
-            >
-              <FaCamera className="w-4 h-4 sm:w-5 sm:h-5" />
-            </button> */}
-            {/* <button
-              onClick={handleMicClick}
-              disabled={isUserBlocked}
-              className={`text-gray-400 hover:text-white ${
-                isRecording ? "text-red-500" : ""
-              }`}
-            >
-              <FaMicrophone className="w-4 h-4 sm:w-5 sm:h-5" />
-            </button> */}
-            {(isRecording || isVideoRecording) && (
-              <span className="text-white text-xs">
-                {Math.floor(
-                  (isRecording ? recordingTime : videoRecordingTime) / 60
-                )}
-                :
-                {((isRecording ? recordingTime : videoRecordingTime) % 60)
-                  .toString()
-                  .padStart(2, "0")}
-              </span>
-            )}
-            {videoMediaRecorder && videoMediaRecorder.state === "paused" && (
-              <button
-                onClick={stopVideoRecording}
-                className="text-red-500 hover:text-red-600 text-xs"
-              >
-                Stop
-              </button>
-            )}
           </div>
 
           <div
@@ -1438,46 +1467,14 @@ const ChatWindow = () => {
                           className="w-[200px] sm:w-[250px]"
                         />
                       )}
-                      {previewFile.type === "application/pdf" && (
-                        <iframe
-                          src={
-                            fileContents[previewFile.name] || previewFile.url
-                          }
-                          title={previewFile.name}
-                          className="w-[70vw] h-[70vh]"
-                        />
-                      )}
-                      {previewFile.type ===
-                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document" && (
-                        <div
-                          className="text-white w-[70vw] h-[70vh] overflow-y-auto p-4"
-                          dangerouslySetInnerHTML={{
-                            __html:
-                              fileContents[previewFile.name] || "Loading...",
-                          }}
-                        />
-                      )}
-                      {previewFile.type.startsWith("text/") && (
-                        <div className="w-[70vw] h-[70vh] overflow-y-auto p-4">
-                          <pre className="text-white whitespace-pre-wrap">
-                            {fileContents[previewFile.name] || "Loading..."}
-                          </pre>
-                        </div>
-                      )}
-                      {!(
-                        previewFile.type.startsWith("image/") ||
-                        previewFile.type.startsWith("video/") ||
-                        previewFile.type.startsWith("audio/") ||
-                        previewFile.type === "application/pdf" ||
-                        previewFile.type ===
-                          "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
-                        previewFile.type.startsWith("text/")
-                      ) && (
-                        <div className="flex items-center gap-2">
-                          <MdInsertDriveFile className="text-gray-400" />
-                          <span>{previewFile.name}</span>
-                        </div>
-                      )}
+                      {!previewFile.type.startsWith("image/") &&
+                        !previewFile.type.startsWith("video/") &&
+                        !previewFile.type.startsWith("audio/") && (
+                          <div className="flex items-center gap-2">
+                            <MdInsertDriveFile className="text-gray-400" />
+                            <span>{previewFile.name}</span>
+                          </div>
+                        )}
                     </>
                   ) : (
                     <div className="flex items-center gap-2">
@@ -1520,7 +1517,9 @@ const ChatWindow = () => {
                         : userDetails?.avatar
                     }
                     alt={
-                      userDetails.type === "group" ? "Group Avatar" : "User Avatar"
+                      userDetails.type === "group"
+                        ? "Group Avatar"
+                        : "User Avatar"
                     }
                     className={`w-[5rem] sm:w-[7rem] h-[5rem] sm:h-[7rem] rounded-full ${
                       userDetails.type === "group"
@@ -1567,7 +1566,7 @@ const ChatWindow = () => {
                         </button>
                       ))}
                     {userDetails.type === "group" && (
-                      <div className="text-white text-xs sm:text-sm">
+                      <div className="w-full h-full text-white text-xs sm:text-sm">
                         <p className="font-semibold">Members:</p>
                         <ul className="list-disc pl-4">
                           {userDetails.members?.map((member, index) => (

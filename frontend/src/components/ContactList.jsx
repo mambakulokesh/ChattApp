@@ -16,10 +16,11 @@ const ContactList = ({ setActiveTab }) => {
   const [showGroupModal, setShowGroupModal] = useState(false);
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [groupName, setGroupName] = useState('');
-  const [activeTabFilter, setActiveTabFilter] = useState('all'); // New state for tab selection
+  const [groupAvatar, setGroupAvatar] = useState(null);
+  const [groupAvatarFileName, setGroupAvatarFileName] = useState('');
+  const [activeTabFilter, setActiveTabFilter] = useState('all');
   const menuRef = useRef(null);
 
-  // Fetch users and groups
   const fetchContacts = async () => {
     if (!user || !user.token) return;
     try {
@@ -36,7 +37,7 @@ const ContactList = ({ setActiveTab }) => {
           email: apiUser.email || '',
           avatar: apiUser.avatar,
           is_active: apiUser.is_active,
-          type: 'user',
+          type: apiUser.type,
         }));
 
       const groupsRes = await axios.get(
@@ -46,9 +47,8 @@ const ContactList = ({ setActiveTab }) => {
       const groups = groupsRes.data.map((group) => ({
         id: group.id,
         username: group.group_name,
-        avatar: null,
-        is_active: true,
-        type: 'group',
+        avatar: group.avatar,
+        type: group.type,
         members: group.members,
       }));
 
@@ -65,40 +65,47 @@ const ContactList = ({ setActiveTab }) => {
     fetchContacts();
   }, [user]);
 
-  // Socket event listeners  
   useEffect(() => {
     if (!user || !user.token) return;
 
-    socket.on('new_message', (messageData) => {
-      if (messageData.room_id) {
-        if (messageData.room_id !== selectedContact?.id) {
-          setUnreadCounts((prev) => ({
-            ...prev,
-            [messageData.room_id]: (prev[messageData.room_id] || 0) + 1,
-          }));
-        }
-      } else if (
-        messageData.receiver_id === user.id &&
-        messageData.sender_id !== selectedContact?.id
-      ) {
-        setUnreadCounts((prev) => ({
-          ...prev,
-          [messageData.sender_id]: (prev[messageData.sender_id] || 0) + 1,
-        }));
-      }
+    socket.on('unread_count', (data) => {
+      console.log('Received unread_count:', data);
+      setUnreadCounts((prev) => ({
+        ...prev,
+        ...data.private_unread_by_user,
+        ...data.group_unread_by_group,
+        [selectedContact?.id]: 0, 
+      }));
+    });
+
+    socket.on('unread_count_error', (data) => {
+      console.error('Unread count error:', data.message);
+    });
+
+    socket.on('mark_conversation_seen_success', (data) => {
+      console.log('Messages seen:', data);
+      setUnreadCounts((prev) => ({
+        ...prev,
+        [data.conversation_id]: 0,
+      }));
+      
+    });
+
+    socket.on('mark_conversation_seen_error', (data) => {
+      console.log('Messages seen:', data);
     });
 
     socket.on('create_room_success', async (data) => {
-      console.log(data.message);
       await fetchContacts();
       setShowGroupModal(false);
       setSelectedUsers([]);
       setGroupName('');
+      setGroupAvatar(null);
+      setGroupAvatarFileName('');
       setSelectedContact({
         id: data.room_id,
         username: data.room_name,
-        avatar: null,
-        is_active: true,
+        avatar: data.avatar,
         type: data.type,
         members: data.members,
       });
@@ -106,12 +113,12 @@ const ContactList = ({ setActiveTab }) => {
     });
 
     socket.on('room_created', async (data) => {
-      console.log(data.message);
+      console.log(data)
       await fetchContacts();
     });
 
     socket.on('create_room_error', (data) => {
-      console.log("Create Room Error: ", data.message || 'Failed to create group.');
+      console.log('Create Room Error:', data.message || 'Failed to create group.');
     });
 
     socket.on('status_updated', (data) => {
@@ -144,22 +151,24 @@ const ContactList = ({ setActiveTab }) => {
       }
     });
 
-    socket.on("make_active_error", (error) => {
-      console.error("Make Active error:", error.message);
+    socket.on('make_active_error', (error) => {
+      console.error('Make Active error:', error.message);
     });
 
     return () => {
+      socket.off('unread_count');
+      socket.off('unread_count_error');
       socket.off('new_message');
       socket.off('create_room_success');
       socket.off('room_created');
       socket.off('create_room_error');
       socket.off('status_updated');
       socket.off('logout_status_updated');
-      socket.off("make_active_error");
+      socket.off('make_active_error');
+      socket.off('mark_conversation_seen_success');
+      socket.off('mark_conversation_seen_error');
     };
   }, [user, selectedContact]);
-
-
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -175,7 +184,6 @@ const ContactList = ({ setActiveTab }) => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [profileMenuOpen]);
 
-
   const handleSearchChange = (e) => setSearch(e.target.value);
 
   const showUserDetails = (contact) => {
@@ -186,19 +194,32 @@ const ContactList = ({ setActiveTab }) => {
       ...prev,
       [contact.id]: 0,
     }));
-  };
 
+    if (contact.type === 'user') {
+      socket.emit('mark_conversation_seen', {
+        user_id: user.id,
+        conversation_id: contact.id,
+        conversation_type: 'private',
+      });
+    } else if (contact.type === 'group') {
+      socket.emit('mark_conversation_seen', {
+        user_id: user.id,
+        conversation_id: contact.id,
+        conversation_type: 'group',
+      });
+    }
+    
+  };
 
   const filteredContacts = contactList.filter((contact) => {
     const matchesSearch = (contact.username || '')
       .toLowerCase()
       .includes(search.toLowerCase());
     if (activeTabFilter === 'all') return matchesSearch;
-    if (activeTabFilter === 'chats') return matchesSearch && contact.type === 'user';
+    // if (activeTabFilter === 'chats') return matchesSearch && contact.type === 'user';
     if (activeTabFilter === 'groups') return matchesSearch && contact.type === 'group';
     return matchesSearch;
   });
-
 
   const handleUserSelect = (userId) => {
     setSelectedUsers((prev) =>
@@ -208,12 +229,26 @@ const ContactList = ({ setActiveTab }) => {
     );
   };
 
+  const handleAvatarChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setGroupAvatarFileName(file.name);
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setGroupAvatar(event.target.result.split(",")[1]);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleCreateGroup = () => {
     if (selectedUsers.length < 2 || !groupName) return;
     socket.emit('create_room', {
       token: user.token,
       room_name: groupName,
       member_ids: selectedUsers,
+      dp: groupAvatar,
+      file_name: groupAvatarFileName,
     });
   };
 
@@ -279,7 +314,7 @@ const ContactList = ({ setActiveTab }) => {
       </div>
 
       {/* Tabs */}
-      <div className="bg-gray-800 border-b border-gray-700 p-3 shrink-0 flex justify-around">
+      <div className="bg-gray-800 border-b border-gray-700 p-2 shrink-0 flex justify-around">
         <button
           className={`px-4 py-2 text-sm font-medium rounded-full transition ${
             activeTabFilter === 'all'
@@ -289,16 +324,6 @@ const ContactList = ({ setActiveTab }) => {
           onClick={() => setActiveTabFilter('all')}
         >
           All
-        </button>
-        <button
-          className={`px-4 py-2 text-sm font-medium rounded-full transition ${
-            activeTabFilter === 'chats'
-              ? 'bg-gray-100 text-black'
-              : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-          }`}
-          onClick={() => setActiveTabFilter('chats')}
-        >
-          Chats
         </button>
         <button
           className={`px-4 py-2 text-sm font-medium rounded-full transition ${
@@ -350,9 +375,17 @@ const ContactList = ({ setActiveTab }) => {
             >
               {contact.type === 'group' ? (
                 <div className="w-8 h-8 rounded-full bg-blue-700 flex items-center justify-center text-white font-bold text-lg ring-4 ring-blue-500">
-                  <span>
-                    {contact.username ? contact.username[0].toUpperCase() : 'G'}
-                  </span>
+                  {contact.avatar ? (
+                    <img
+                      src={contact.avatar}
+                      alt={contact.username}
+                      className="w-8 h-8 rounded-full object-cover"
+                    />
+                  ) : (
+                    <span>
+                      {contact.username ? contact.username[0].toUpperCase() : 'G'}
+                    </span>
+                  )}
                 </div>
               ) : (
                 <img
@@ -382,7 +415,7 @@ const ContactList = ({ setActiveTab }) => {
                       : 'offline'}
                   </p>
                 </div>
-                {unreadCounts[contact.id] > 0 && (
+                {unreadCounts[contact.id] > 0 && selectedContact?.id !== contact.id && (
                   <span className="bg-blue-600 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
                     {unreadCounts[contact.id]}
                   </span>
@@ -437,6 +470,17 @@ const ContactList = ({ setActiveTab }) => {
                 onChange={(e) => setGroupName(e.target.value)}
               />
             </div>
+            <div className="mb-4">
+              <label className="block mb-2 text-sm font-medium">
+                Group avatar:
+              </label>
+              <input
+                type="file"
+                accept="image/*"
+                className="w-full p-2 rounded bg-gray-800 text-white"
+                onChange={handleAvatarChange}
+              />
+            </div>
             <div className="flex justify-end space-x-2">
               <button
                 className="px-4 py-2 bg-gray-700 rounded"
@@ -444,6 +488,8 @@ const ContactList = ({ setActiveTab }) => {
                   setShowGroupModal(false);
                   setSelectedUsers([]);
                   setGroupName('');
+                  setGroupAvatar(null);
+                  setGroupAvatarFileName('');
                 }}
               >
                 Cancel

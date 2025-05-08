@@ -13,7 +13,6 @@ import axios from "axios";
 import { socket } from "../utils/commonFunctions/SocketConnection";
 import ChatSettings from "./ChatSettings";
 
-
 const fadeScaleVariant = {
   hidden: { opacity: 0, scale: 0.9 },
   visible: {
@@ -26,7 +25,6 @@ const fadeScaleVariant = {
   },
 };
 
-
 const modalVariant = {
   hidden: { opacity: 0, scale: 0.8 },
   visible: {
@@ -36,7 +34,6 @@ const modalVariant = {
   },
   exit: { opacity: 0, scale: 0.8, transition: { duration: 0.2 } },
 };
-
 
 const Profile = () => {
   const navigate = useNavigate();
@@ -63,25 +60,30 @@ const Profile = () => {
   }, []);
 
   useEffect(() => {
-
     if (user && userDetails && user.token && userDetails.id) {
       const fetchFiles = async () => {
         setIsLoading(true);
         try {
-          const response = await axios.get(
-            `http://38.77.155.139:8000/messaging/get-media-files/?sender_id=${user.id}&receiver_id=${userDetails.id}`,
-            {
-              headers: {
-                Authorization: `Bearer ${user?.token}`,
-              },
-            }
-          );
-  
+          let apiUrl;
+          let response;
+
+          if (userDetails.type === "group") {
+            apiUrl = `http://38.77.155.139:8000/messaging/get-group-media-files/?group_id=${userDetails.id}`;
+          } else {
+            apiUrl = `http://38.77.155.139:8000/messaging/get-media-files/?sender_id=${user.id}&receiver_id=${userDetails.id}`;
+          }
+
+          response = await axios.get(apiUrl, {
+            headers: {
+              Authorization: `Bearer ${user.token}`,
+            },
+          });
+
           const files = response.data.files || [];
           const mediaTypes = ["image/jpeg", "image/png", "video/mp4"];
           const media = [];
           const docs = [];
-  
+
           files.forEach((file) => {
             file.file.forEach((item) => {
               if (mediaTypes.includes(item.file_type)) {
@@ -99,7 +101,7 @@ const Profile = () => {
               }
             });
           });
-  
+
           setMediaFiles(media);
           setDocuments(docs);
         } catch (err) {
@@ -111,7 +113,6 @@ const Profile = () => {
       };
       fetchFiles();
     }
- 
   }, [user, userDetails]);
 
   const handleLogout = async () => {
@@ -150,46 +151,8 @@ const Profile = () => {
     }
   };
 
-  // const handleUpdateBio = async () => {
-  //   if (!bioText.trim()) {
-  //     setBioError("Bio cannot be empty");
-  //     return;
-  //   }
-
-  //   setIsBioLoading(true);
-  //   setBioError(null);
-
-  //   try {
-  //     await axios.patch(
-  //       "http://38.77.155.139:8000/user/add-bio/",
-  //       {
-  //         data: {
-  //           bio: bioText,
-  //         },
-  //         headers: {
-  //           Authorization: `Bearer ${user?.token}`,
-  //         },
-          
-  //       }
-  //     );
-  //     user.bio = bioText;
-  //     setIsBioModalOpen(false);
-  //   } catch (err) {
-  //     setBioError("Failed to update bio");
-  //     console.error("Error updating bio:", err);
-  //   } finally {
-  //     setIsBioLoading(false);
-  //   }
-  // };
-
   const openPreview = () => setIsPreviewOpen(true);
   const closePreview = () => setIsPreviewOpen(false);
-  // const openBioModal = () => setIsBioModalOpen(true);
-  const closeBioModal = () => {
-    setIsBioModalOpen(false);
-    setBioText(user?.bio || "");
-    setBioError(null);
-  };
 
   return (
     <motion.div
@@ -200,7 +163,7 @@ const Profile = () => {
     >
       {/* User Info */}
       <motion.div
-        className="p-6 space-y-3 flex flex-col items-center border-b border-gray-700"
+        className="p-4 md:p-6 space-y-3 flex flex-col items-center border-b border-gray-700"
         variants={fadeScaleVariant}
       >
         <div className="relative">
@@ -211,7 +174,7 @@ const Profile = () => {
                 : user?.avatar
             }
             alt={user?.username || "User"}
-            className={`w-[11rem] h-[11rem] rounded-full cursor-pointer ${
+            className={`w-[8rem] md:w-[11rem] h-[8rem] md:h-[11rem] rounded-full cursor-pointer ${
               user?.is_active ? "ring-4 ring-green-500" : "ring-4 ring-gray-700"
             }`}
             initial={{ scale: 0.8, opacity: 0 }}
@@ -223,14 +186,14 @@ const Profile = () => {
           />
           {user?.is_active && (
             <motion.div
-              className="absolute bottom-2 right-2 w-4 h-4 bg-green-500 rounded-full border-2 border-gray-800"
+              className="absolute bottom-1 right-1 md:bottom-2 md:right-2 w-3 h-3 md:w-4 md:h-4 bg-green-500 rounded-full border-2 border-gray-800"
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
               transition={{ delay: 0.3 }}
             />
           )}
         </div>
-        <h2 className="text-base text-white font-semibold truncate">
+        <h2 className="text-base md:text-lg text-white font-semibold truncate">
           {user?.username || "Loading..."}
         </h2>
         <p className="text-xs text-gray-400">
@@ -242,15 +205,6 @@ const Profile = () => {
       <div className="p-3 space-y-2 text-white">
         <div className="flex justify-between items-center">
           <h3 className="text-xs font-semibold text-gray-400 mb-2">About</h3>
-          {/* <motion.button
-            className="text-gray-300 hover:text-white"
-            onClick={openBioModal}
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.9 }}
-            aria-label="Edit bio"
-          >
-            <FaEdit size={14} />
-          </motion.button> */}
         </div>
         <motion.p
           className="text-sm text-white whitespace-pre-wrap break-words p-3"
@@ -263,7 +217,7 @@ const Profile = () => {
       </div>
 
       {/* Chat Settings */}
-      <div className="p-4 space-y-4 w-full h-screen">
+      <div className="p-4 space-y-4 w-full flex-grow overflow-y-hidden">
         <h3 className="text-sm font-semibold text-gray-300 mb-3">
           Chat Settings
         </h3>
@@ -334,7 +288,7 @@ const Profile = () => {
                 onClick={closePreview}
                 aria-label="Close preview"
               >
-                <FaTimes size={24} />
+                <FaTimes size={16} />
               </button>
               <img
                 src={
@@ -349,73 +303,6 @@ const Profile = () => {
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Bio Edit Modal */}
-      {/* <AnimatePresence>
-        {isBioModalOpen && (
-          <motion.div
-            className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={closeBioModal}
-            role="dialog"
-            aria-label="Edit bio modal"
-          >
-            <motion.div
-              className="relative bg-gray-800 rounded-lg p-6 max-w-md w-full"
-              variants={modalVariant}
-              initial="hidden"
-              animate="visible"
-              exit="exit"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <button
-                className="absolute top-2 right-2 text-white hover:text-gray-400"
-                onClick={closeBioModal}
-                aria-label="Close bio modal"
-              >
-                <FaTimes size={20} />
-              </button>
-              <h3 className="text-lg font-semibold text-white mb-4">
-                Edit Bio
-              </h3>
-              <textarea
-                className="w-full p-3 bg-gray-700 text-white rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
-                rows="4"
-                value={bioText}
-                onChange={(e) => setBioText(e.target.value)}
-                placeholder="Enter your bio..."
-                aria-label="Bio input"
-              />
-              {bioError && (
-                <p className="text-red-400 text-sm mt-2">{bioError}</p>
-              )}
-              <div className="flex justify-end space-x-3 mt-4">
-                <motion.button
-                  className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-500"
-                  onClick={closeBioModal}
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  aria-label="Cancel bio edit"
-                >
-                  Cancel
-                </motion.button>
-                <motion.button
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 disabled:bg-gray-500"
-                  onClick={handleUpdateBio}
-                  disabled={isBioLoading}
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  aria-label="Save bio"
-                >
-                  {isBioLoading ? "Saving..." : "Save"}
-                </motion.button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence> */}
     </motion.div>
   );
 };
